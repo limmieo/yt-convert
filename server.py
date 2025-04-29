@@ -12,23 +12,22 @@ def process_video():
     input_file = f"/tmp/{uuid.uuid4()}.mp4"
     output_file = f"/tmp/{uuid.uuid4()}_out.mp4"
     
-    # Randomly pick a watermark style
+    # Randomly pick a watermark
     watermark_choice = random.choice(["watermark.png", "watermark_2.png", "watermark_3.png"])
 
     # Download the video
     subprocess.run(["wget", "-O", input_file, video_url])
 
-    # === Watermark Randomization Settings ===
+    # Random settings
     opacity_main = round(random.uniform(0.83, 0.91), 2)
     opacity_secondary = round(random.uniform(0.75, 0.83), 2)
     scale_main = random.uniform(0.85, 1.0)
     scale_secondary = random.uniform(0.8, 0.95)
     offset_x_main = random.randint(20, 50)
-    offset_y_main = random.randint(200, 350)
+    offset_y_main = random.randint(350, 700)  # ⬅ Avoid Instagram top bar
     offset_x_secondary = random.randint(20, 40)
     offset_y_secondary = random.randint(20, 50)
 
-    # Frame rate slight jitter
     framerate = round(random.uniform(29.97, 30.03), 2)
 
     # FFmpeg Command
