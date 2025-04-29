@@ -13,22 +13,21 @@ def process_video():
     output_file = f"/tmp/{uuid.uuid4()}_out.mp4"
     watermark = "watermark.png"  # Full opacity, transparent PNG
 
-    # Download the video
+    # Download video
     subprocess.run(["wget", "-O", input_file, video_url])
 
-    # === ANTI-DETECTION SMARTS ===
-    opacity = round(random.uniform(0.83, 0.91), 2)  # Random opacity
-    offset_x = random.randint(20, 50)                # Random slight X shift
-    offset_y = random.randint(20, 50)                # Random slight Y shift
-    rotation_angle = round(random.uniform(-2, 2), 2) # Random small rotation (-2° to +2°)
-    watermark_scale = random.uniform(0.85, 1.0)      # Slight watermark resizing (85%-100%)
+    # === Watermark Smarts ===
+    opacity = round(random.uniform(0.83, 0.91), 2)
+    watermark_scale = random.uniform(0.85, 1.0)
+    offset_x = random.randint(20, 50)
+    offset_y = random.randint(200, 350)
 
-    # FFmpeg command
+    # FFmpeg Command
     command = [
         "ffmpeg", "-i", input_file,
         "-i", watermark,
         "-filter_complex",
-        f"[1:v]scale=iw*{watermark_scale}:ih*{watermark_scale},format=rgba,colorchannelmixer=aa={opacity},rotate={rotation_angle}*PI/180[wm];"
+        f"[1:v]scale=iw*{watermark_scale}:ih*{watermark_scale},format=rgba,colorchannelmixer=aa={opacity}[wm];"
         f"[0:v]scale=iw*0.9:ih*0.9[scaled];"
         f"[scaled][wm]overlay={offset_x}:{offset_y}[marked];"
         f"[marked]pad=iw/0.9:ih/0.9:(ow-iw)/2:(oh-ih)/2",
