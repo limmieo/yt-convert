@@ -63,7 +63,8 @@ def process_video():
         subprocess.run([
             "ffmpeg", "-i", watermarked_file,
             "-map_metadata", "-1",
-            "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+            "-c:v", "libx264", "-preset", "veryfast",
+            "-c:a", "aac", "-b:a", "128k",
             final_output
         ], check=True)
 
