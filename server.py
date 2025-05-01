@@ -42,7 +42,7 @@ def process_video():
             f"[1:v]split=2[wm1][wm2];"
             f"[wm1]scale=iw*{scale_main}:ih*{scale_main},format=rgba,colorchannelmixer=aa={opacity_main}[wm1out];"
             f"[wm2]scale=iw*{scale_secondary}:ih*{scale_secondary},format=rgba,colorchannelmixer=aa={opacity_secondary}[wm2out];"
-            f"[0:v]hflip," 
+            f"[0:v]hflip,"
             f"crop=iw-6:ih-6:(iw-6)*{random.random()}:(ih-6)*{random.random()},"
             f"pad=iw+6:ih+6:(ow-iw)/2:(oh-ih)/2,"
             f"eq=brightness=0.015:contrast=1.04:saturation=1.05,"
@@ -54,7 +54,6 @@ def process_video():
             f"[marked]pad=iw/0.9:ih/0.9:(ow-iw)/2:(oh-ih)/2",
             "-r", str(framerate),
             "-ss", "1", "-t", "59",
-            "-an",
             "-preset", "fast",
             watermarked_file
         ]
