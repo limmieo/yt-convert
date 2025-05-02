@@ -17,7 +17,7 @@ def process_video():
     final_output = f"/tmp/{uuid.uuid4()}_final.mp4"
 
     try:
-        # Random watermark selection
+        # Watermark selection
         watermark_choice = random.choice(["watermark.png", "watermark_2.png", "watermark_3.png"])
 
         # Download video
@@ -34,16 +34,13 @@ def process_video():
         offset_x_secondary = random.randint(20, 40)
         offset_y_secondary = random.randint(20, 50)
 
-        # Bounce logic
-        dx = random.randint(2, 4)
-        dy = random.randint(2, 4)
-        W = random.randint(0, 100)
-        H = random.randint(0, 100)
-        X = random.randint(1, 3)
+        # Time-based bounce speed
+        dx = round(random.uniform(30, 80), 2)
+        dy = round(random.uniform(30, 80), 2)
 
         framerate = round(random.uniform(29.87, 30.1), 3)
 
-        # FFmpeg command with bouncing watermark
+        # FFmpeg command with animated bouncing watermark
         command = [
             "ffmpeg", "-i", input_file,
             "-i", watermark_choice,
@@ -57,8 +54,8 @@ def process_video():
             f"eq=brightness=0.01:contrast=1.02:saturation=1.03,"
             f"scale=iw*0.9:ih*0.9[scaled];"
             f"[scaled][wm1out]overlay="
-            f"x='if(eq(mod(n\\,{X})\\,0)\\,{W}\\,if(gte(x+{dx}\\,main_w-w)\\,-{dx}\\,x+{dx}))':"
-            f"y='if(eq(mod(n\\,{X})\\,0)\\,{H}\\,if(gte(y+{dy}\\,main_h-h)\\,-{dy}\\,y+{dy}))'[step1];"
+            f"x='abs(mod(t*{dx},(main_w-w)*2)-(main_w-w))':"
+            f"y='abs(mod(t*{dy},(main_h-h)*2)-(main_h-h))'[step1];"
             f"[step1][wm2out]overlay={offset_x_secondary}:H-h-{offset_y_secondary}[marked];"
             f"[marked]pad=iw/0.9:ih/0.9:(ow-iw)/2:(oh-ih)/2",
             "-r", str(framerate),
