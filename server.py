@@ -33,7 +33,13 @@ def process_video():
     offset_y_secondary = random.randint(30, 120)
 
     # FFmpeg processing
-    command = [
+  dx = random.randint(2, 4)
+dy = random.randint(2, 4)
+W = random.randint(0, 100)
+H = random.randint(0, 100)
+X = random.randint(1, 3)
+
+command = [
     "ffmpeg", "-i", input_file,
     "-i", watermark_choice,
     "-filter_complex",
@@ -48,8 +54,8 @@ def process_video():
     f"gblur=sigma=0.8,"
     f"scale=iw*0.9:ih*0.9[scaled];"
     f"[scaled][wm1out]overlay="
-    f"x='if(eq(mod(n\\,{X})\,0)\,{W}\,if(gte(x+{dx}\,main_w-w)\,-{dx}\,x+{dx}))':"
-    f"y='if(eq(mod(n\\,{X})\,0)\,{H}\,if(gte(y+{dy}\,main_h-h)\,-{dy}\,y+{dy}))'[step1];"
+    f"x='if(eq(mod(n\\,{X})\\,0)\\,{W}\\,if(gte(x+{dx}\\,main_w-w)\\,-{dx}\\,x+{dx}))':"
+    f"y='if(eq(mod(n\\,{X})\\,0)\\,{H}\\,if(gte(y+{dy}\\,main_h-h)\\,-{dy}\\,y+{dy}))'[step1];"
     f"[step1][wm2out]overlay={offset_x_secondary}:{offset_y_secondary}[marked];"
     f"[marked]pad=iw/0.9:ih/0.9:(ow-iw)/2:(oh-ih)/2",
     "-ss", "1", "-t", "59",
