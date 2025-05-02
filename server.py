@@ -34,27 +34,30 @@ def process_video():
 
     # FFmpeg processing
     command = [
-        "ffmpeg", "-i", input_file,
-        "-i", watermark_choice,
-        "-filter_complex",
-        f"[1:v]split=2[wm1][wm2];"
-        f"[wm1]scale=iw*{scale_main}:ih*{scale_main},format=rgba,colorchannelmixer=aa={opacity_main}[wm1out];"
-        f"[wm2]scale=iw*{scale_secondary}:ih*{scale_secondary},format=rgba,colorchannelmixer=aa={opacity_secondary}[wm2out];"
-        f"[0:v]hflip,"
-        f"crop=iw-6:ih-6:(iw-6)*{random.random()}:(ih-6)*{random.random()},"
-        f"pad=iw+6:ih+6:(ow-iw)/2:(oh-ih)/2,"
-        f"eq=brightness=0.015:contrast=1.04:saturation=1.05,"
-        f"noise=alls=4:allf=t+u,"
-        f"gblur=sigma=0.8,"
-        f"scale=iw*0.9:ih*0.9[scaled];"
-        f"[scaled][wm1out]overlay={offset_x_main}:{offset_y_main}[step1];"
-        f"[step1][wm2out]overlay={offset_x_secondary}:{offset_y_secondary}[marked];"
-        f"[marked]pad=iw/0.9:ih/0.9:(ow-iw)/2:(oh-ih)/2",
-        "-ss", "1", "-t", "59",
-        "-r", "29.87",
-        "-preset", "ultrafast",
-        watermarked_file
-    ]
+    "ffmpeg", "-i", input_file,
+    "-i", watermark_choice,
+    "-filter_complex",
+    f"[1:v]split=2[wm1][wm2];"
+    f"[wm1]scale=iw*{scale_main}:ih*{scale_main},format=rgba,colorchannelmixer=aa={opacity_main}[wm1out];"
+    f"[wm2]scale=iw*{scale_secondary}:ih*{scale_secondary},format=rgba,colorchannelmixer=aa={opacity_secondary}[wm2out];"
+    f"[0:v]hflip,"
+    f"crop=iw-6:ih-6:(iw-6)*{random.random()}:(ih-6)*{random.random()},"
+    f"pad=iw+6:ih+6:(ow-iw)/2:(oh-ih)/2,"
+    f"eq=brightness=0.015:contrast=1.04:saturation=1.05,"
+    f"noise=alls=4:allf=t+u,"
+    f"gblur=sigma=0.8,"
+    f"scale=iw*0.9:ih*0.9[scaled];"
+    f"[scaled][wm1out]overlay="
+    f"x='if(eq(mod(n\\,{X})\,0)\,{W}\,if(gte(x+{dx}\,main_w-w)\,-{dx}\,x+{dx}))':"
+    f"y='if(eq(mod(n\\,{X})\,0)\,{H}\,if(gte(y+{dy}\,main_h-h)\,-{dy}\,y+{dy}))'[step1];"
+    f"[step1][wm2out]overlay={offset_x_secondary}:{offset_y_secondary}[marked];"
+    f"[marked]pad=iw/0.9:ih/0.9:(ow-iw)/2:(oh-ih)/2",
+    "-ss", "1", "-t", "59",
+    "-r", "29.87",
+    "-preset", "ultrafast",
+    watermarked_file
+]
+
 
     subprocess.run(command, check=True)
 
