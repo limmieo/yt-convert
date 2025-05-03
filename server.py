@@ -21,12 +21,13 @@ def process_video():
         watermark_choice = os.path.join(os.getcwd(), random.choice([
             "watermark.png", "watermark_2.png", "watermark_3.png"
         ]))
+        lut_path = os.path.join(os.getcwd(), "Cobi_3.CUBE")
 
         subprocess.run([
             "wget", "--header=User-Agent: Mozilla/5.0", "-O", input_file, video_url
         ], check=True)
 
-        # Dynamic filter values
+        # Dynamic visuals
         opacity_bounce = round(random.uniform(0.5, 0.6), 2)
         opacity_static = round(random.uniform(0.85, 0.95), 2)
         opacity_topleft = round(random.uniform(0.4, 0.6), 2)
@@ -55,6 +56,7 @@ def process_video():
             f"boxblur=1:1,"
             f"noise=alls=5:allf=t+u,"
             f"crop=iw-6:ih-6:(random(1)*6):(random(1)*6),"
+            f"lut3d='{lut_path}',"
             f"pad=iw+4:ih+4:(ow-iw)/2:(oh-ih)/2,"
             f"eq=brightness=0.01:contrast=1.02:saturation=1.03,"
             f"[base];"
@@ -66,8 +68,11 @@ def process_video():
             "-map_metadata", "-1",
             "-map_chapters", "-1",
             "-r", str(framerate),
+            "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
+            "-b:v", "1M", "-maxrate", "1M", "-bufsize", "2M",
             "-preset", "superfast",
             "-t", "40",
+            "-c:a", "aac", "-b:a", "128k",
             "-metadata", metadata_tag,
             watermarked_file
         ]
