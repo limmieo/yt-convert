@@ -34,12 +34,7 @@ def process_video():
 
         scale_bounce = random.uniform(0.85, 1.0)
         scale_static = random.uniform(1.1, 1.25)
-        scale_topleft = random.uniform(0.9, 1.1)
-
-        dx = round(random.uniform(20, 40), 2)
-        dy = round(random.uniform(20, 40), 2)
-        delay_x = round(random.uniform(0.2, 1.0), 2)
-        delay_y = round(random.uniform(0.2, 1.0), 2)
+        scale_topleft = random.uniform(1.3, 1.5)  # top-left is 50% larger
 
         framerate = round(random.uniform(29.87, 30.1), 3)
 
@@ -57,22 +52,15 @@ def process_video():
             f"lut3d='{lut_path}',"
             f"pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
             f"eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
-            f"[base][bounce_out]overlay="
-            f"x='abs(mod((t+{delay_x})*{dx},(main_w-w)*2)-(main_w-w))':"
-            f"y='abs(mod((t+{delay_y})*{dy},(main_h-h)*2)-(main_h-h))'[step1];"
-            f"[step1][static_out]overlay="
-            f"x='(main_w-w)/2':y='main_h-h-10'[step2];"
-            f"[step2][top_out]overlay="
-            f"x='mod((t*60),(main_w+w))-w':y=20,"
-            f"scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]",
+            f"[base][bounce_out]overlay=x='main_w-w-30':y='main_h-h-60'[step1];"
+            f"[step1][static_out]overlay=x='(main_w-w)/2':y='main_h-h-10'[step2];"
+            f"[step2][top_out]overlay=x='mod((t*60),(main_w+w))-w':y=20[final]",
             "-map", "[final]", "-map", "0:a?",
-            "-vf", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
             "-map_metadata", "-1", "-map_chapters", "-1",
             "-r", str(framerate),
             "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
             "-b:v", "2.5M", "-maxrate", "2.5M", "-bufsize", "5M",
-            "-preset", "veryfast",
-            "-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "4.0",
+            "-preset", "superfast",
             "-t", "40",
             "-c:v", "libx264", "-c:a", "copy",
             "-metadata", metadata_tag,
