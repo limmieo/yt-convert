@@ -18,10 +18,11 @@ def process_video():
     metadata_tag = "brand=thick_asian"
 
     try:
-        watermark_choice = os.path.join(os.getcwd(), random.choice([
+        assets_path = os.path.join(os.getcwd(), "assets")
+        watermark_choice = os.path.join(assets_path, random.choice([
             "watermark.png", "watermark_2.png", "watermark_3.png"
         ]))
-        lut_path = os.path.join(os.getcwd(), "Cobi_3.CUBE")
+        lut_path = os.path.join(assets_path, "Cobi_3.CUBE")
 
         subprocess.run([
             "wget", "--header=User-Agent: Mozilla/5.0", "-O", input_file, video_url
@@ -51,7 +52,7 @@ def process_video():
             f"[wm_bounce]scale=iw*{scale_bounce}:ih*{scale_bounce},format=rgba,colorchannelmixer=aa={opacity_bounce}[bounce_out];"
             f"[wm_static]scale=iw*{scale_static}:ih*{scale_static},format=rgba,colorchannelmixer=aa={opacity_static}[static_out];"
             f"[wm_top]scale=iw*{scale_topleft}:ih*{scale_topleft},format=rgba,colorchannelmixer=aa={opacity_topleft}[top_out];"
-            f"[0:v]setpts=PTS+0.001/TB,"
+            f"[0:v]hflip,setpts=PTS+0.001/TB,"
             f"scale=iw*0.98:ih*0.98,"
             f"boxblur=1:1,"
             f"noise=alls=5:allf=t+u,"
