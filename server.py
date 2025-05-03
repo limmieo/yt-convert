@@ -103,7 +103,7 @@ def process_video(brand):
             "-r", str(framerate),
             "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
             "-b:v", "5M", "-maxrate", "5M", "-bufsize", "10M",
-            "-preset", "slow",
+            "-preset", "fast",
             "-t", "40",
             "-c:v", "libx264", "-c:a", "copy",
             "-metadata", metadata_tag,
