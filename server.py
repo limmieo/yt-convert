@@ -64,6 +64,7 @@ def process_video():
             f"y='abs(mod((t+{delay_y})*{dy},(main_h-h)*2)-(main_h-h))'[step1];"
             f"[step1][static_out]overlay=x='(main_w-w)/2':y='main_h-h-30'[step2];"
             f"[step2][top_out]overlay=x=20:y=20[final]",
+            "-map", "[final]",
             "-map_metadata", "-1",
             "-map_chapters", "-1",
             "-r", str(framerate),
