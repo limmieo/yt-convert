@@ -65,7 +65,6 @@ def process_video(brand):
             "wget", "--header=User-Agent: Mozilla/5.0", "-O", input_file, video_url
         ], check=True)
 
-        # Randomized overlay settings
         opacity_bounce = round(random.uniform(0.6, 0.7), 2)
         opacity_static = round(random.uniform(0.85, 0.95), 2)
         opacity_topleft = round(random.uniform(0.4, 0.6), 2)
@@ -103,7 +102,7 @@ def process_video(brand):
             "-r", str(framerate),
             "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
             "-b:v", "5M", "-maxrate", "5M", "-bufsize", "10M",
-            "-preset", "veryfast",
+            "-preset", "ultrafast",  # << Updated here
             "-t", "40",
             "-c:v", "libx264", "-c:a", "copy",
             "-metadata", metadata_tag,
