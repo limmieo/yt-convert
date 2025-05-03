@@ -6,8 +6,44 @@ import random
 
 app = Flask(__name__)
 
-@app.route('/process', methods=['POST'])
-def process_video():
+BRANDS = {
+    "thick_asian": {
+        "metadata": "brand=thick_asian",
+        "lut": "Cobi_3.CUBE",
+        "scroll_speed": 80,
+        "watermarks": [
+            "Thick_asian_watermark.png",
+            "Thick_asian_watermark_2.png",
+            "Thick_asian_watermark_3.png"
+        ]
+    },
+    "gym_baddie": {
+        "metadata": "brand=gym_baddie",
+        "lut": "Cobi_3.CUBE",
+        "scroll_speed": 120,
+        "watermarks": [
+            "gym_baddie_watermark.png",
+            "gym_baddie_watermark_2.png",
+            "gym_baddie_watermark_3.png"
+        ]
+    },
+    "polishedform": {
+        "metadata": "brand=polishedform",
+        "lut": None,
+        "scroll_speed": 80,
+        "watermarks": [
+            "polished_watermark.png",
+            "polished_watermark_2.png",
+            "polished_watermark_3.png"
+        ]
+    }
+}
+
+@app.route('/process/<brand>', methods=['POST'])
+def process_video(brand):
+    if brand not in BRANDS:
+        return {"error": f"Unsupported brand '{brand}'."}, 400
+
     video_url = request.json.get('video_url')
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
@@ -15,19 +51,21 @@ def process_video():
     input_file = f"/tmp/{uuid.uuid4()}.mp4"
     watermarked_file = f"/tmp/{uuid.uuid4()}_marked.mp4"
     final_output = f"/tmp/{uuid.uuid4()}_final.mp4"
-    metadata_tag = "brand=thick_asian"
 
     try:
+        config = BRANDS[brand]
+        metadata_tag = config["metadata"]
+        scroll_speed = config["scroll_speed"]
+
         assets_path = os.path.join(os.getcwd(), "assets")
-        watermark_choice = os.path.join(assets_path, random.choice([
-            "watermark.png", "watermark_2.png", "watermark_3.png"
-        ]))
-        lut_path = os.path.join(assets_path, "Cobi_3.CUBE")
+        watermark_choice = os.path.join(assets_path, random.choice(config["watermarks"]))
+        lut_path = os.path.join(assets_path, config["lut"]) if config["lut"] else None
 
         subprocess.run([
             "wget", "--header=User-Agent: Mozilla/5.0", "-O", input_file, video_url
         ], check=True)
 
+        # Randomized overlay settings
         opacity_bounce = round(random.uniform(0.6, 0.7), 2)
         opacity_static = round(random.uniform(0.85, 0.95), 2)
         opacity_topleft = round(random.uniform(0.4, 0.6), 2)
@@ -37,11 +75,9 @@ def process_video():
         scale_topleft = random.uniform(0.9, 1.1)
 
         framerate = round(random.uniform(29.87, 30.1), 3)
+        lut_filter = f"lut3d='{lut_path}'," if lut_path else ""
 
-        command = [
-            "ffmpeg", "-i", input_file,
-            "-i", watermark_choice,
-            "-filter_complex",
+        filter_complex = (
             f"[1:v]split=3[wm_bounce][wm_static][wm_top];"
             f"[wm_bounce]scale=iw*{scale_bounce}:ih*{scale_bounce},format=rgba,colorchannelmixer=aa={opacity_bounce}[bounce_out];"
             f"[wm_static]scale=iw*{scale_static}:ih*{scale_static},format=rgba,colorchannelmixer=aa={opacity_static}[static_out];"
@@ -49,13 +85,19 @@ def process_video():
             f"[0:v]hflip,setpts=PTS+0.001/TB,"
             f"scale=iw*0.98:ih*0.98,"
             f"crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
-            f"lut3d='{lut_path}',"
+            f"{lut_filter}"
             f"pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
             f"eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
             f"[base][bounce_out]overlay=x='main_w-w-30+10*sin(t*3)':y='main_h-h-60+5*sin(t*2)'[step1];"
             f"[step1][static_out]overlay=x='(main_w-w)/2':y='main_h-h-10'[step2];"
-            f"[step2][top_out]overlay=x='mod((t*80),(main_w+w))-w':y=60,"
-            f"scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]",
+            f"[step2][top_out]overlay=x='mod((t*{scroll_speed}),(main_w+w))-w':y=60,"
+            f"scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
+        )
+
+        command = [
+            "ffmpeg", "-i", input_file,
+            "-i", watermark_choice,
+            "-filter_complex", filter_complex,
             "-map", "[final]", "-map", "0:a?",
             "-map_metadata", "-1", "-map_chapters", "-1",
             "-r", str(framerate),
@@ -84,6 +126,9 @@ def process_video():
         return {"error": f"FFmpeg error: {str(e)}"}, 500
     except Exception as e:
         return {"error": f"Unexpected error: {str(e)}"}, 500
+    finally:
+        for f in [input_file, watermarked_file]:
+            if os.path.exists(f): os.remove(f)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
