@@ -28,7 +28,6 @@ def process_video():
             "wget", "--header=User-Agent: Mozilla/5.0", "-O", input_file, video_url
         ], check=True)
 
-        # Dynamic visuals
         opacity_bounce = round(random.uniform(0.5, 0.6), 2)
         opacity_static = round(random.uniform(0.85, 0.95), 2)
         opacity_topleft = round(random.uniform(0.4, 0.6), 2)
@@ -59,8 +58,7 @@ def process_video():
             f"crop=iw-6:ih-6:(random(1)*6):(random(1)*6),"
             f"lut3d='{lut_path}',"
             f"pad=iw+4:ih+4:(ow-iw)/2:(oh-ih)/2,"
-            f"eq=brightness=0.01:contrast=1.02:saturation=1.03,"
-            f"[base];"
+            f"eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
             f"[base][bounce_out]overlay="
             f"x='abs(mod((t+{delay_x})*{dx},(main_w-w)*2)-(main_w-w))':"
             f"y='abs(mod((t+{delay_y})*{dy},(main_h-h)*2)-(main_h-h))'[step1];"
