@@ -28,14 +28,13 @@ def process_video():
             "wget", "--header=User-Agent: Mozilla/5.0", "-O", input_file, video_url
         ], check=True)
 
-        # Watermark styling
         opacity_bounce = round(random.uniform(0.6, 0.7), 2)
         opacity_static = round(random.uniform(0.85, 0.95), 2)
         opacity_topleft = round(random.uniform(0.4, 0.6), 2)
 
         scale_bounce = random.uniform(0.85, 1.0)
         scale_static = random.uniform(1.1, 1.25)
-        scale_topleft = random.uniform(0.6, 0.75)
+        scale_topleft = random.uniform(0.9, 1.1)  # BIGGER TOP-LEFT
 
         framerate = round(random.uniform(29.87, 30.1), 3)
 
@@ -55,7 +54,7 @@ def process_video():
             f"eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
             f"[base][bounce_out]overlay=x='main_w-w-30':y='main_h-h-60'[step1];"
             f"[step1][static_out]overlay=x='(main_w-w)/2':y='main_h-h-10'[step2];"
-            f"[step2][top_out]overlay=x=20:y=20,"
+            f"[step2][top_out]overlay=x='mod((t*30),(main_w+w))-w':y=20,"
             f"scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]",
             "-map", "[final]", "-map", "0:a?",
             "-map_metadata", "-1", "-map_chapters", "-1",
