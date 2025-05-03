@@ -18,13 +18,15 @@ def process_video():
     metadata_tag = "brand=thick_asian"
 
     try:
-        watermark_choice = random.choice(["watermark.png", "watermark_2.png", "watermark_3.png"])
+        watermark_choice = os.path.join(os.getcwd(), random.choice([
+            "watermark.png", "watermark_2.png", "watermark_3.png"
+        ]))
 
         subprocess.run([
             "wget", "--header=User-Agent: Mozilla/5.0", "-O", input_file, video_url
         ], check=True)
 
-        # Watermark styles
+        # Dynamic filter values
         opacity_bounce = round(random.uniform(0.5, 0.6), 2)
         opacity_static = round(random.uniform(0.85, 0.95), 2)
         opacity_topleft = round(random.uniform(0.4, 0.6), 2)
@@ -48,22 +50,24 @@ def process_video():
             f"[wm_bounce]scale=iw*{scale_bounce}:ih*{scale_bounce},format=rgba,colorchannelmixer=aa={opacity_bounce}[bounce_out];"
             f"[wm_static]scale=iw*{scale_static}:ih*{scale_static},format=rgba,colorchannelmixer=aa={opacity_static}[static_out];"
             f"[wm_top]scale=iw*{scale_topleft}:ih*{scale_topleft},format=rgba,colorchannelmixer=aa={opacity_topleft}[top_out];"
-            f"[0:v]hflip,"
-            f"crop=iw-4:ih-4:(iw-4)*{random.random()}:(ih-4)*{random.random()},"
+            f"[0:v]setpts=PTS+0.001/TB,"
+            f"scale=iw*0.98:ih*0.98,"
+            f"boxblur=1:1,"
+            f"noise=alls=5:allf=t+u,"
+            f"crop=iw-6:ih-6:(random(1)*6):(random(1)*6),"
             f"pad=iw+4:ih+4:(ow-iw)/2:(oh-ih)/2,"
             f"eq=brightness=0.01:contrast=1.02:saturation=1.03,"
-            f"scale=iw*0.9:ih*0.9[scaled];"
-            f"[scaled][bounce_out]overlay="
+            f"[base];"
+            f"[base][bounce_out]overlay="
             f"x='abs(mod((t+{delay_x})*{dx},(main_w-w)*2)-(main_w-w))':"
             f"y='abs(mod((t+{delay_y})*{dy},(main_h-h)*2)-(main_h-h))'[step1];"
-            f"[step1][static_out]overlay="
-            f"x='(main_w-w)/2':y='main_h-h-30'[step2];"
-            f"[step2][top_out]overlay="
-            f"x=20:y=20[final];"
-            f"[final]pad=iw/0.9:ih/0.9:(ow-iw)/2:(oh-ih)/2",
+            f"[step1][static_out]overlay=x='(main_w-w)/2':y='main_h-h-30'[step2];"
+            f"[step2][top_out]overlay=x=20:y=20[final]",
+            "-map_metadata", "-1",
+            "-map_chapters", "-1",
             "-r", str(framerate),
-            "-ss", "0", "-t", "40",
-            "-preset", "ultrafast",
+            "-preset", "superfast",
+            "-t", "40",
             "-metadata", metadata_tag,
             watermarked_file
         ]
@@ -72,7 +76,7 @@ def process_video():
 
         subprocess.run([
             "ffmpeg", "-i", watermarked_file,
-            "-map_metadata", "0",
+            "-map_metadata", "-1", "-map_chapters", "-1",
             "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
             "-metadata", metadata_tag,
             final_output
