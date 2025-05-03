@@ -34,7 +34,7 @@ def process_video():
 
         scale_bounce = random.uniform(0.85, 1.0)
         scale_static = random.uniform(1.1, 1.25)
-        scale_topleft = random.uniform(1.3, 1.5)  # top-left is 50% larger
+        scale_topleft = random.uniform(1.3, 1.5)  # BIGGER
 
         framerate = round(random.uniform(29.87, 30.1), 3)
 
@@ -51,10 +51,12 @@ def process_video():
             f"crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
             f"lut3d='{lut_path}',"
             f"pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
-            f"eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
+            f"eq=brightness=0.01:contrast=1.02:saturation=1.03,"
+            f"scale=1080:1920:flags=lanczos,setsar=1[base];"
             f"[base][bounce_out]overlay=x='main_w-w-30':y='main_h-h-60'[step1];"
             f"[step1][static_out]overlay=x='(main_w-w)/2':y='main_h-h-10'[step2];"
-            f"[step2][top_out]overlay=x='mod((t*60),(main_w+w))-w':y=20[final]",
+            f"[step2][top_out]overlay=x='mod((t*80),(main_w+w))-w':y=20,"
+            f"scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]",
             "-map", "[final]", "-map", "0:a?",
             "-map_metadata", "-1", "-map_chapters", "-1",
             "-r", str(framerate),
