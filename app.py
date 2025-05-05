@@ -128,6 +128,7 @@ def process_video_in_background(video_url, selected_brand, progress_callback):
             final_output
         ], check=True)
 
+        # Return the path to the final output video
         return final_output
 
     except subprocess.CalledProcessError as e:
@@ -140,7 +141,7 @@ def process_video_in_background(video_url, selected_brand, progress_callback):
         for f in [input_file, watermarked_file]:
             if os.path.exists(f): os.remove(f)
 
-# Route to render the index page (add this)
+# Route to render the index page
 @app.route('/')
 def index():
     return render_template('index.html', brands=BRANDS)
@@ -162,7 +163,7 @@ def process_video_route():
     processing_thread = threading.Thread(target=process_video_in_background, args=(video_url, selected_brand, update_progress))
     processing_thread.start()
 
-    return render_template('processing.html', video_url=None, progress=progress_data["progress"])
+    return render_template('processing.html', progress=progress_data["progress"])
 
 @app.route('/progress', methods=['GET'])
 def get_progress():
