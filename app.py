@@ -68,7 +68,7 @@ def process_video_in_background(video_url, selected_brand, progress_callback):
         # Simulate progress (for demonstration purposes)
         for i in range(101):
             time.sleep(0.1)  # Simulate processing delay
-            progress_callback(i)
+            progress_callback(i)  # Update progress
 
         # Apply video processing logic
         opacity_bounce = round(random.uniform(0.6, 0.7), 2)
@@ -135,9 +135,10 @@ def process_video_in_background(video_url, selected_brand, progress_callback):
         for f in [input_file, watermarked_file]:
             if os.path.exists(f): os.remove(f)
 
-# Route to render the index page
+# Route to render the index page (add this)
 @app.route('/')
 def index():
+    # Pass the BRANDS dictionary to the template
     return render_template('index.html', brands=BRANDS)
 
 @app.route('/process', methods=['POST'])
@@ -157,7 +158,6 @@ def process_video_route():
     processing_thread = threading.Thread(target=process_video_in_background, args=(video_url, selected_brand, update_progress))
     processing_thread.start()
 
-    # Render processing page
     return render_template('processing.html', video_url=None, progress=progress_data["progress"])
 
 @app.route('/progress', methods=['GET'])
