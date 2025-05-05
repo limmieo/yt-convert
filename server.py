@@ -3,7 +3,6 @@ import subprocess
 import uuid
 import os
 import random
-import shlex
 
 app = Flask(__name__)
 
@@ -76,7 +75,7 @@ def process_video(brand):
         framerate = round(random.uniform(29.87, 30.1), 3)
         lut_filter = f"lut3d='{lut_path}'," if lut_path else ""
 
-        # Reaction caption setup (Thick Asian only)
+        # Load reaction caption
         if "caption_file" in config:
             caption_file = os.path.join(assets_path, config["caption_file"])
             with open(caption_file, "r") as f:
@@ -86,7 +85,7 @@ def process_video(brand):
             drawtext_filter = (
                 f"drawbox=y=0:color=black@0.6:width=iw:height=90:t=fill,"
                 f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
-                f"text='{escaped_caption}':fontcolor=white:fontsize=40:x=(w-text_w)/2:y=25,"
+                f"text='{escaped_caption}':fontcolor=white:fontsize=28:x=(w-text_w)/2:y=38,"
             )
         else:
             drawtext_filter = ""
@@ -94,7 +93,7 @@ def process_video(brand):
         filter_complex = (
             f"[1:v]split=3[wm_bounce][wm_static][wm_top];"
             f"[wm_bounce]scale=iw*{scale_bounce}:ih*{scale_bounce},format=rgba,colorchannelmixer=aa={opacity_bounce}[bounce_out];"
-            f"[wm_static]scale=iw*{scale_static}:ih*{scale_static},format=rgba,colorchannelmixer=aa={opacity_static}[static_out];"
+            f"[wm_static]scale=iw*{scale_static}:ih*{scale_static},format=rgba,colorchannelmixer=aa={opacity_static},boxblur=10:1[blurred_static];"
             f"[wm_top]scale=iw*{scale_topleft}:ih*{scale_topleft},format=rgba,colorchannelmixer=aa={opacity_topleft}[top_out];"
             f"[0:v]hflip,setpts=PTS+0.001/TB,"
             f"scale=iw*0.98:ih*0.98,"
@@ -105,7 +104,7 @@ def process_video(brand):
             f"{drawtext_filter}"
             f"scale='trunc(iw/2)*2:trunc(ih/2)*2'[base];"
             f"[base][bounce_out]overlay=x='main_w-w-30+10*sin(t*3)':y='main_h-h-60+5*sin(t*2)'[step1];"
-            f"[step1][static_out]overlay=x='(main_w-w)/2':y='main_h-h-10'[step2];"
+            f"[step1][blurred_static]overlay=x='(main_w-w)/2':y='main_h-h-10'[step2];"
             f"[step2][top_out]overlay=x='mod((t*{scroll_speed}),(main_w+w))-w':y=60[final]"
         )
 
