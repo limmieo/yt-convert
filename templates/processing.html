@@ -1,96 +1,55 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Processing Your Video</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Processing Video</title>
   <style>
-    body {
-      font-family: sans-serif;
-      display:flex; align-items:center; justify-content:center;
-      height:100vh; margin:0; background:#f7f7f7;
-    }
-    .box {
-      background:white;
-      padding:2rem;
-      border-radius:8px;
-      text-align:center;
-      box-shadow:0 4px 12px rgba(0,0,0,0.1);
-      width:90%; max-width:500px;
-    }
-    .spinner {
-      width:50px; height:50px;
-      border:6px solid #e0e0e0;
-      border-top:6px solid #007bff;
-      border-radius:50%;
-      animation:spin 1s linear infinite;
-      margin:1rem auto;
-    }
+    body { font-family: Arial; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; }
+    .box { text-align:center; }
+    .loader { border:6px solid #eee; border-top:6px solid #3498db; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:20px auto; }
     @keyframes spin { to { transform:rotate(360deg); } }
-    .progress {
-      height:1.5rem; background:#e0e0e0;
-      border-radius:4px; overflow:hidden;
-      margin:1.5rem 0;
-    }
-    .progress-bar {
-      height:100%; width:0;
-      background:#007bff;
-      transition:width 0.3s;
-    }
-    .download { margin-top:1.5rem; }
-    .download a {
-      display:inline-block; padding:0.75rem 1.5rem;
-      background:#28a745; color:white; border-radius:4px;
-      text-decoration:none;
-    }
-    .download a:hover { background:#218838; }
-    .error { color:red; margin-top:1rem; }
+    .bar { width:300px; height:20px; background:#ddd; margin:10px auto; border-radius:10px; overflow:hidden; }
+    .fill { height:100%; width:0%; background:#3498db; transition:width .3s; }
+    .download { margin-top:20px; }
+    .download a { color:#007bff; text-decoration:none; font-weight:bold; }
+    .download a:hover { text-decoration:underline; }
   </style>
 </head>
 <body>
   <div class="box">
     <h2>Processing Your Video</h2>
-    <div class="spinner"></div>
-    <p>Please wait while we process your video…</p>
-    <div class="progress">
-      <div id="bar" class="progress-bar"></div>
-    </div>
+    <div class="loader"></div>
+    <p>Please wait…</p>
+
+    <div class="bar"><div id="fill" class="fill"></div></div>
     <div id="download" class="download"></div>
-    <div id="error" class="error"></div>
   </div>
 
   <script>
-    function tick() {
-      fetch("/progress")
-        .then(r => r.json())
-        .then(data => {
-          // Progress
-          document.getElementById("bar").style.width = data.progress + "%";
+    const taskId = "{{ task_id }}";
+    const fill   = document.getElementById("fill");
+    const dlDiv  = document.getElementById("download");
 
-          // Error?
-          if (data.error) {
-            document.getElementById("error").innerText = data.error;
-            return;
-          }
+    function poll() {
+      fetch(`/progress/${taskId}`)
+        .then(r=>r.json())
+        .then(data=>{
+          fill.style.width = data.progress + "%";
 
-          // Done?
-          if (data.progress === 100 && data.filename) {
-            document.getElementById("download").innerHTML = 
-              `<a href="/download/${data.filename}" target="_blank">
-                 Download Processed Video
-               </a>`;
-          } else if (data.progress < 100) {
-            // schedule next poll
-            setTimeout(tick, 500);
+          if (data.progress < 100) {
+            setTimeout(poll, 300);
+          } else if (data.filename) {
+            dlDiv.innerHTML = `
+              <p>✅ Done!</p>
+              <a href="/download/${data.filename}" target="_blank">
+                Download your video
+              </a>`;
           }
-        })
-        .catch(err => {
-          console.error(err);
-          setTimeout(tick, 1000);
         });
     }
 
-    window.onload = tick;
+    window.onload = poll;
   </script>
 </body>
 </html>
