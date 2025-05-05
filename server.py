@@ -100,7 +100,7 @@ def process_video(brand):
             f"pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
             f"eq=brightness=0.01:contrast=1.02:saturation=1.03,"
             f"{caption_box}"
-            f"drawtext=text='{selected_caption}':fontcolor=white:fontsize=28:x=(w-text_w)/2:y=10:enable='between(t,0,4)':alpha='if(lt(t,3),1,1-(t-3))'[base];"
+            f"drawtext=text='{selected_caption}':fontcolor=white:fontsize=28:x=(w-text_w)/2:y=80:enable='between(t,0,4)':alpha='if(lt(t,3),1,1-(t-3))'[base];"
             f"[base][bounce_out]overlay=x='main_w-w-30+10*sin(t*3)':y='main_h-h-60+5*sin(t*2)'[step1];"
             f"[step1][static_out]overlay=x='(main_w-w)/2':y='main_h-h-10'[step2];"
             f"[step2][top_out]overlay=x='mod((t*{scroll_speed}),(main_w+w))-w':y=60,"
