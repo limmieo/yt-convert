@@ -3,6 +3,7 @@ import subprocess
 import uuid
 import os
 import random
+import shlex
 
 app = Flask(__name__)
 
@@ -15,7 +16,8 @@ BRANDS = {
             "Thick_asian_watermark.png",
             "Thick_asian_watermark_2.png",
             "Thick_asian_watermark_3.png"
-        ]
+        ],
+        "caption_file": "thick_asian_captions.txt"
     },
     "gym_baddie": {
         "metadata": "brand=gym_baddie",
@@ -54,16 +56,14 @@ def process_video(brand):
 
     try:
         config = BRANDS[brand]
-        metadata_tag = config["metadata"]
+        metadata_key, metadata_value = config["metadata"].split("=")
         scroll_speed = config["scroll_speed"]
 
         assets_path = os.path.join(os.getcwd(), "assets")
         watermark_choice = os.path.join(assets_path, random.choice(config["watermarks"]))
         lut_path = os.path.join(assets_path, config["lut"]) if config["lut"] else None
 
-        subprocess.run([
-            "wget", "--header=User-Agent: Mozilla/5.0", "-O", input_file, video_url
-        ], check=True)
+        subprocess.run(["wget", "--header=User-Agent: Mozilla/5.0", "-O", input_file, video_url], check=True)
 
         opacity_bounce = round(random.uniform(0.6, 0.7), 2)
         opacity_static = round(random.uniform(0.85, 0.95), 2)
@@ -76,6 +76,21 @@ def process_video(brand):
         framerate = round(random.uniform(29.87, 30.1), 3)
         lut_filter = f"lut3d='{lut_path}'," if lut_path else ""
 
+        # Reaction caption setup (Thick Asian only)
+        if "caption_file" in config:
+            caption_file = os.path.join(assets_path, config["caption_file"])
+            with open(caption_file, "r") as f:
+                captions = [line.strip() for line in f if line.strip()]
+            chosen_caption = random.choice(captions)
+            escaped_caption = chosen_caption.replace(":", "\\:").replace("'", "\\'")
+            drawtext_filter = (
+                f"drawbox=y=0:color=black@0.6:width=iw:height=90:t=fill,"
+                f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
+                f"text='{escaped_caption}':fontcolor=white:fontsize=40:x=(w-text_w)/2:y=25,"
+            )
+        else:
+            drawtext_filter = ""
+
         filter_complex = (
             f"[1:v]split=3[wm_bounce][wm_static][wm_top];"
             f"[wm_bounce]scale=iw*{scale_bounce}:ih*{scale_bounce},format=rgba,colorchannelmixer=aa={opacity_bounce}[bounce_out];"
@@ -86,36 +101,36 @@ def process_video(brand):
             f"crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
             f"{lut_filter}"
             f"pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
-            f"eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
+            f"eq=brightness=0.01:contrast=1.02:saturation=1.03,"
+            f"{drawtext_filter}"
+            f"scale='trunc(iw/2)*2:trunc(ih/2)*2'[base];"
             f"[base][bounce_out]overlay=x='main_w-w-30+10*sin(t*3)':y='main_h-h-60+5*sin(t*2)'[step1];"
             f"[step1][static_out]overlay=x='(main_w-w)/2':y='main_h-h-10'[step2];"
-            f"[step2][top_out]overlay=x='mod((t*{scroll_speed}),(main_w+w))-w':y=60,"
-            f"scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
+            f"[step2][top_out]overlay=x='mod((t*{scroll_speed}),(main_w+w))-w':y=60[final]"
         )
 
         command = [
-            "ffmpeg", "-i", input_file,
-            "-i", watermark_choice,
+            "ffmpeg", "-y", "-i", input_file, "-i", watermark_choice,
             "-filter_complex", filter_complex,
             "-map", "[final]", "-map", "0:a?",
             "-map_metadata", "-1", "-map_chapters", "-1",
             "-r", str(framerate),
             "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
             "-b:v", "5M", "-maxrate", "5M", "-bufsize", "10M",
-            "-preset", "ultrafast",  # << Updated here
+            "-preset", "ultrafast",
             "-t", "40",
             "-c:v", "libx264", "-c:a", "copy",
-            "-metadata", metadata_tag,
+            "-metadata", f"{metadata_key}={metadata_value}",
             watermarked_file
         ]
 
         subprocess.run(command, check=True)
 
         subprocess.run([
-            "ffmpeg", "-i", watermarked_file,
+            "ffmpeg", "-y", "-i", watermarked_file,
             "-map_metadata", "-1", "-map_chapters", "-1",
             "-c:v", "copy", "-c:a", "copy",
-            "-metadata", metadata_tag,
+            "-metadata", f"{metadata_key}={metadata_value}",
             final_output
         ], check=True)
 
