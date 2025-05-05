@@ -135,6 +135,11 @@ def process_video_in_background(video_url, selected_brand, progress_callback):
         for f in [input_file, watermarked_file]:
             if os.path.exists(f): os.remove(f)
 
+# Route to render the index page (add this)
+@app.route('/')
+def index():
+    # Pass the BRANDS dictionary to the template
+    return render_template('index.html', brands=BRANDS)
 
 @app.route('/process', methods=['POST'])
 def process_video_route():
@@ -155,11 +160,9 @@ def process_video_route():
 
     return render_template('processing.html', video_url=None, progress=progress_data["progress"])
 
-
 @app.route('/progress', methods=['GET'])
 def get_progress():
     return jsonify(progress=progress_data["progress"])
-
 
 if __name__ == "__main__":
     app.run(debug=True)
