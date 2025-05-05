@@ -76,7 +76,7 @@ def process_video(brand):
         framerate = round(random.uniform(29.87, 30.1), 3)
         lut_filter = f"lut3d='{lut_path}'," if lut_path else ""
 
-        # Caption + black bar fade logic
+        # Caption with bounce and multiline support
         if "caption_file" in config:
             caption_file = os.path.join(assets_path, config["caption_file"])
             with open(caption_file, "r") as f:
@@ -88,7 +88,9 @@ def process_video(brand):
                 f"enable='gte(t,0)':alpha='if(lt(t,3),1,if(lt(t,4),1-(t-3),0))',"
                 f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
                 f"text='{escaped_caption}':fontcolor=white:fontsize=28:"
-                f"x=(w-text_w)/2:y=38:"
+                f"x=(w-text_w)/2:"
+                f"y='if(lt(t,0.5),0,if(lt(t,0.8),38 - 10*sin((t-0.5)*20),38))':"
+                f"line_spacing=10:"
                 f"alpha='if(lt(t,3),1,if(lt(t,4),1-(t-3),0))',"
             )
         else:
