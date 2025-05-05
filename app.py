@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 import subprocess
 import os
 import uuid
@@ -7,7 +7,7 @@ import threading
 import time
 import requests
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="outputs")
 
 # -----------------------------------------------------------------------------
 # Configuration
@@ -45,129 +45,117 @@ BRANDS = {
     }
 }
 
-# This dict holds the current progress (0–100)
-progress_data = {"progress": 0}
+# Shared state (progress + final filename)
+progress_data = {
+    "progress": 0,
+    "output_filename": None
+}
 
 
 # -----------------------------------------------------------------------------
-# Background processing function
+# Background processing
 # -----------------------------------------------------------------------------
-def process_video_in_background(video_url, selected_brand, progress_callback):
+def process_video_async(video_url, brand_key):
     """
-    Downloads the video, simulates progress, applies FFmpeg filters,
-    and writes out a finished file path.
+    Downloads, watermarks, encodes the video, and updates progress_data.
+    When done, sets progress_data['output_filename'] to the final file.
     """
-    # generate unique temp filenames
-    input_file        = f"tmp_{uuid.uuid4()}.mp4"
-    watermarked_file  = f"tmp_{uuid.uuid4()}_marked.mp4"
-    final_output      = f"tmp_{uuid.uuid4()}_final.mp4"
+    cfg = BRANDS[brand_key]
+    assets = os.path.join(os.getcwd(), "assets")
+
+    # Temp files
+    in_file  = f"/tmp/{uuid.uuid4()}.mp4"
+    mid_file = f"/tmp/{uuid.uuid4()}_marked.mp4"
+    out_file = f"outputs/{uuid.uuid4()}_final.mp4"  # will live under ./outputs
 
     try:
-        cfg           = BRANDS[selected_brand]
-        metadata_tag  = cfg["metadata"]
-        scroll_speed  = cfg["scroll_speed"]
-
-        # pick a random watermark and optional LUT
-        assets_path   = os.path.join(os.getcwd(), "assets")
-        wm_choice     = random.choice(cfg["watermarks"])
-        watermark     = os.path.join(assets_path, wm_choice)
-        lut_path      = os.path.join(assets_path, cfg["lut"]) if cfg["lut"] else None
-        lut_filter    = f"lut3d='{lut_path}'," if lut_path else ""
-
-        # 1) Download the video
+        # 1) Download
         with requests.get(video_url, stream=True) as r:
             r.raise_for_status()
-            with open(input_file, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
+            with open(in_file, "wb") as f:
+                for chunk in r.iter_content(8192):
                     f.write(chunk)
 
-        # 2) Simulate progress for the UI
-        for i in range(101):
-            time.sleep(0.05)
-            progress_callback(i)
+        # 2) Simulate progress
+        for i in range(0, 90):
+            time.sleep(0.03)
+            progress_data["progress"] = i
 
-        # 3) Build your FFmpeg filter_complex
-        opacity_bounce  = round(random.uniform(0.6, 0.7), 2)
-        opacity_static  = round(random.uniform(0.85, 0.95), 2)
-        opacity_topleft = round(random.uniform(0.4, 0.6), 2)
+        # 3) Build FFmpeg filter_complex
+        wm_choice = random.choice(cfg["watermarks"])
+        watermark = os.path.join(assets, wm_choice)
+        lut_filter = (
+            f"lut3d='{os.path.join(assets, cfg['lut'])}',"
+            if cfg["lut"] else ""
+        )
 
-        scale_bounce    = random.uniform(0.85, 1.0)
-        scale_static    = random.uniform(1.1, 1.25)
-        scale_topleft   = random.uniform(0.9, 1.1)
+        # random styling
+        op_b = round(random.uniform(0.6, 0.7), 2)
+        op_s = round(random.uniform(0.85, 0.95), 2)
+        op_t = round(random.uniform(0.4, 0.6), 2)
+        sc_b = random.uniform(0.85, 1.0)
+        sc_s = random.uniform(1.1, 1.25)
+        sc_t = random.uniform(0.9, 1.1)
+        fr = round(random.uniform(29.87, 30.1), 3)
 
-        framerate       = round(random.uniform(29.87, 30.1), 3)
-
-        filter_complex = (
-            # split watermark into three streams
-            f"[1:v]split=3[wm_bounce][wm_static][wm_top];"
-            # bouncing watermark (now static bottom-right with a tiny sin() shift)
-            f"[wm_bounce]scale=iw*{scale_bounce}:ih*{scale_bounce},"
-            f"format=rgba,colorchannelmixer=aa={opacity_bounce}[bounce_out];"
-            # static center-bottom watermark
-            f"[wm_static]scale=iw*{scale_static}:ih*{scale_static},"
-            f"format=rgba,colorchannelmixer=aa={opacity_static}[static_out];"
-            # top-left scrolling watermark
-            f"[wm_top]scale=iw*{scale_topleft}:ih*{scale_topleft},"
-            f"format=rgba,colorchannelmixer=aa={opacity_topleft}[top_out];"
-            # main video chain: flip, tiny timestamp tweak, shrink, crop, pad, LUT, color
+        fc = (
+            f"[1:v]split=3[wm_b][wm_s][wm_t];"
+            f"[wm_b]scale=iw*{sc_b}:ih*{sc_b},format=rgba,"
+            f"colorchannelmixer=aa={op_b}[b_out];"
+            f"[wm_s]scale=iw*{sc_s}:ih*{sc_s},format=rgba,"
+            f"colorchannelmixer=aa={op_s}[s_out];"
+            f"[wm_t]scale=iw*{sc_t}:ih*{sc_t},format=rgba,"
+            f"colorchannelmixer=aa={op_t}[t_out];"
             f"[0:v]hflip,setpts=PTS+0.001/TB,"
             f"scale=iw*0.98:ih*0.98,"
             f"crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
             f"{lut_filter}"
             f"pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
             f"eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
-            # overlay bottom-right watermark
-            f"[base][bounce_out]overlay="
-            f"x='main_w-w-30+10*sin(t*2)':y='main_h-h-60+5*sin(t*2)'[step1];"
-            # overlay center-bottom watermark
-            f"[step1][static_out]overlay="
-            f"x='(main_w-w)/2':y='main_h-h-10'[step2];"
-            # overlay top-left watermark as a news-ticker
-            f"[step2][top_out]overlay="
-            f"x='mod(t*{scroll_speed}, main_w + w) - w':y=20,"
-            # enforce even dimensions
+            f"[base][b_out]overlay=x='main_w-w-30':y='main_h-h-60'[st1];"
+            f"[st1][s_out]overlay=x='(main_w-w)/2':y='main_h-h-10'[st2];"
+            f"[st2][t_out]overlay="
+            f"x='mod(t*{cfg['scroll_speed']},main_w+w)-w':y=20,"
             f"scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
-        # 4) Run ffmpeg: apply filters + copy audio + strip metadata
+        # 4) Run ffmpeg
         subprocess.run([
-            "ffmpeg", "-i", input_file,
-            "-i", watermark,
-            "-filter_complex", filter_complex,
+            "ffmpeg", "-y", "-i", in_file, "-i", watermark,
+            "-filter_complex", fc,
             "-map", "[final]", "-map", "0:a?",
             "-map_metadata", "-1", "-map_chapters", "-1",
-            "-r", str(framerate),
+            "-r", str(fr),
             "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
             "-b:v", "5M", "-maxrate", "5M", "-bufsize", "10M",
             "-preset", "ultrafast",
             "-t", "40",
             "-c:v", "libx264", "-c:a", "copy",
-            "-metadata", metadata_tag,
-            watermarked_file
+            "-metadata", cfg["metadata"],
+            mid_file
         ], check=True)
 
-        # 5) Final pass to re-apply metadata strip and copy streams again
+        # 5) Final copy
         subprocess.run([
-            "ffmpeg", "-i", watermarked_file,
+            "ffmpeg", "-y", "-i", mid_file,
             "-map_metadata", "-1", "-map_chapters", "-1",
             "-c:v", "copy", "-c:a", "copy",
-            "-metadata", metadata_tag,
-            final_output
+            "-metadata", cfg["metadata"],
+            out_file
         ], check=True)
 
-        return final_output
+        # done!
+        progress_data["progress"] = 100
+        progress_data["output_filename"] = os.path.basename(out_file)
 
-    except subprocess.CalledProcessError as e:
-        print("FFmpeg error:", e)
-        return None
     except Exception as e:
-        print("Unexpected error:", e)
-        return None
+        print("Processing error:", e)
+        progress_data["output_filename"] = None
+
     finally:
-        # cleanup temp files
-        for f in (input_file, watermarked_file):
-            if os.path.exists(f):
-                os.remove(f)
+        for f in (in_file, mid_file):
+            try: os.remove(f)
+            except: pass
 
 
 # -----------------------------------------------------------------------------
@@ -179,25 +167,18 @@ def index():
 
 
 @app.route('/process', methods=['POST'])
-def process_video_route():
-    global progress_data
-
-    video_url      = request.form.get('video_url', '').strip()
-    selected_brand = request.form.get('brand', '')
-
-    if not video_url or selected_brand not in BRANDS:
+def start_processing():
+    url   = request.form.get('video_url','').strip()
+    brand = request.form.get('brand','')
+    if not url or brand not in BRANDS:
         return render_template('index.html', brands=BRANDS), 400
 
-    # reset the shared progress
+    # reset shared state
     progress_data["progress"] = 0
+    progress_data["output_filename"] = None
 
-    def update_progress(p):
-        progress_data["progress"] = p
-
-    # kick off background processing
-    t = threading.Thread(
-        target=lambda: process_video_in_background(video_url, selected_brand, update_progress)
-    )
+    # start background job
+    t = threading.Thread(target=process_video_async, args=(url, brand))
     t.daemon = True
     t.start()
 
@@ -205,12 +186,17 @@ def process_video_route():
 
 
 @app.route('/progress', methods=['GET'])
-def get_progress():
-    return jsonify(progress=progress_data["progress"])
+def progress():
+    return jsonify(progress=progress_data["progress"],
+                   filename=progress_data["output_filename"])
 
 
-# -----------------------------------------------------------------------------
-# Run the app
-# -----------------------------------------------------------------------------
+@app.route('/download/<path:fn>')
+def download(fn):
+    # serves from ./outputs
+    return send_from_directory("outputs", fn, as_attachment=True)
+
+
 if __name__ == '__main__':
+    os.makedirs("outputs", exist_ok=True)
     app.run(debug=True)
