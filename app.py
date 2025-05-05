@@ -5,6 +5,7 @@ import uuid
 import random
 import threading
 import time
+import requests
 
 app = Flask(__name__)
 
@@ -47,9 +48,9 @@ progress_data = {"progress": 0}
 
 # Function to simulate video processing and update progress
 def process_video_in_background(video_url, selected_brand, progress_callback):
-    input_file = f"/tmp/{uuid.uuid4()}.mp4"
-    watermarked_file = f"/tmp/{uuid.uuid4()}_marked.mp4"
-    final_output = f"/tmp/{uuid.uuid4()}_final.mp4"
+    input_file = f"tmp_{uuid.uuid4()}.mp4"  # Use relative paths
+    watermarked_file = f"tmp_{uuid.uuid4()}_marked.mp4"
+    final_output = f"tmp_{uuid.uuid4()}_final.mp4"
 
     try:
         config = BRANDS[selected_brand]
@@ -60,16 +61,17 @@ def process_video_in_background(video_url, selected_brand, progress_callback):
         watermark_choice = os.path.join(assets_path, random.choice(config["watermarks"]))
         lut_path = os.path.join(assets_path, config["lut"]) if config["lut"] else None
 
-        # Download video
-        subprocess.run([
-            "wget", "--header=User-Agent: Mozilla/5.0", "-O", input_file, video_url
-        ], check=True)
+        # Download video using requests (this works cross-platform)
+        with requests.get(video_url, stream=True) as r:
+            r.raise_for_status()  # Check for HTTP errors
+            with open(input_file, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
 
         # Simulate progress (for demonstration purposes)
         for i in range(101):
             time.sleep(0.1)  # Simulate processing delay
             progress_callback(i)  # Update progress in callback
-            print(f"Progress: {i}%")  # Debug log
 
         # Apply video processing logic
         opacity_bounce = round(random.uniform(0.6, 0.7), 2)
@@ -129,10 +131,10 @@ def process_video_in_background(video_url, selected_brand, progress_callback):
         return final_output
 
     except subprocess.CalledProcessError as e:
-        print(f"Error: {str(e)}")  # Debug log
+        print(f"Error: {str(e)}")
         return {"error": f"FFmpeg error: {str(e)}"}, 500
     except Exception as e:
-        print(f"Error: {str(e)}")  # Debug log
+        print(f"Error: {str(e)}")
         return {"error": f"Unexpected error: {str(e)}"}, 500
     finally:
         for f in [input_file, watermarked_file]:
@@ -141,7 +143,6 @@ def process_video_in_background(video_url, selected_brand, progress_callback):
 # Route to render the index page (add this)
 @app.route('/')
 def index():
-    # Pass the BRANDS dictionary to the template
     return render_template('index.html', brands=BRANDS)
 
 @app.route('/process', methods=['POST'])
