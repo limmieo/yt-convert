@@ -1,109 +1,96 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Processing Your Video</title>
-  <link
-    href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
-    rel="stylesheet"
-  >
   <style>
     body {
-      font-family: Arial, sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
-      background: #f7f7f7;
+      font-family: sans-serif;
+      display:flex; align-items:center; justify-content:center;
+      height:100vh; margin:0; background:#f7f7f7;
     }
-    .container {
-      text-align: center;
-      width: 90%;
-      max-width: 500px;
-      background: white;
-      padding: 2rem;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    .box {
+      background:white;
+      padding:2rem;
+      border-radius:8px;
+      text-align:center;
+      box-shadow:0 4px 12px rgba(0,0,0,0.1);
+      width:90%; max-width:500px;
     }
-    .loader {
-      border: 8px solid #e0e0e0;
-      border-top: 8px solid #007bff;
-      border-radius: 50%;
-      width: 50px;
-      height: 50px;
-      animation: spin 1s linear infinite;
-      margin: 1rem auto;
+    .spinner {
+      width:50px; height:50px;
+      border:6px solid #e0e0e0;
+      border-top:6px solid #007bff;
+      border-radius:50%;
+      animation:spin 1s linear infinite;
+      margin:1rem auto;
     }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
+    @keyframes spin { to { transform:rotate(360deg); } }
     .progress {
-      height: 1.5rem;
-      margin: 1.5rem 0;
+      height:1.5rem; background:#e0e0e0;
+      border-radius:4px; overflow:hidden;
+      margin:1.5rem 0;
     }
-    .video-link {
-      margin-top: 1.5rem;
+    .progress-bar {
+      height:100%; width:0;
+      background:#007bff;
+      transition:width 0.3s;
     }
+    .download { margin-top:1.5rem; }
+    .download a {
+      display:inline-block; padding:0.75rem 1.5rem;
+      background:#28a745; color:white; border-radius:4px;
+      text-decoration:none;
+    }
+    .download a:hover { background:#218838; }
+    .error { color:red; margin-top:1rem; }
   </style>
 </head>
 <body>
-
-  <div class="container">
+  <div class="box">
     <h2>Processing Your Video</h2>
-    <div class="loader"></div>
-    <p>Your video is being processed. Please wait…</p>
-
+    <div class="spinner"></div>
+    <p>Please wait while we process your video…</p>
     <div class="progress">
-      <div
-        id="progress-bar"
-        class="progress-bar progress-bar-striped progress-bar-animated"
-        role="progressbar"
-        style="width: 0%"
-        aria-valuemin="0" aria-valuemax="100"
-      ></div>
+      <div id="bar" class="progress-bar"></div>
     </div>
-
-    <div id="download-link" class="video-link"></div>
+    <div id="download" class="download"></div>
+    <div id="error" class="error"></div>
   </div>
 
   <script>
-    function updateProgress() {
-      fetch('/progress')
-        .then(res => res.json())
+    function tick() {
+      fetch("/progress")
+        .then(r => r.json())
         .then(data => {
-          const pct = data.progress || 0;
-          document.getElementById('progress-bar').style.width = pct + '%';
+          // Progress
+          document.getElementById("bar").style.width = data.progress + "%";
 
-          // When fully done and server has provided a filename,
-          // show the download button once.
-          if (pct === 100 && data.filename) {
-            const dl = document.getElementById('download-link');
-            dl.innerHTML = `
-              <p class="text-success">✅ Your video is ready!</p>
-              <a
-                href="/download/${data.filename}"
-                class="btn btn-primary"
-                target="_blank"
-              >
-                Download Processed Video
-              </a>
-            `;
-          } else if (pct < 100) {
-            // keep polling every 500ms
-            setTimeout(updateProgress, 500);
+          // Error?
+          if (data.error) {
+            document.getElementById("error").innerText = data.error;
+            return;
+          }
+
+          // Done?
+          if (data.progress === 100 && data.filename) {
+            document.getElementById("download").innerHTML = 
+              `<a href="/download/${data.filename}" target="_blank">
+                 Download Processed Video
+               </a>`;
+          } else if (data.progress < 100) {
+            // schedule next poll
+            setTimeout(tick, 500);
           }
         })
         .catch(err => {
-          console.error('Progress check failed:', err);
-          // retry in 1s
-          setTimeout(updateProgress, 1000);
+          console.error(err);
+          setTimeout(tick, 1000);
         });
     }
 
-    window.onload = updateProgress;
+    window.onload = tick;
   </script>
-
 </body>
 </html>
