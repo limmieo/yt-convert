@@ -54,13 +54,13 @@
         <p>Your video is being processed. Please wait...</p>
 
         <div class="progress">
-            <div class="progress-bar" role="progressbar" style="width: 0%;" id="progress-bar"></div>
+            <div class="progress-bar" role="progressbar" style="width: {{ progress }}%;" id="progress-bar"></div>
         </div>
 
-        {% if video_url %}
+        {% if progress == 100 %}
         <div class="video-link">
             <p>Your processed video is ready!</p>
-            <a href="{{ video_url }}" target="_blank">Click here to view the video</a>
+            <a href="{{ url_for('static', filename='processed_video.mp4') }}" target="_blank">Click here to view/download the video</a>
         </div>
         {% endif %}
     </div>
