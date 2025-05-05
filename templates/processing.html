@@ -30,6 +30,21 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        .progress {
+            height: 30px;
+            margin: 20px 0;
+        }
+        .video-link {
+            margin-top: 20px;
+        }
+        .video-link a {
+            font-size: 1.2em;
+            color: #007bff;
+            text-decoration: none;
+        }
+        .video-link a:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -37,6 +52,38 @@
         <h1>Processing Your Video</h1>
         <div class="loader"></div>
         <p>Your video is being processed. Please wait...</p>
+
+        <div class="progress">
+            <div class="progress-bar" role="progressbar" style="width: 0%;" id="progress-bar"></div>
+        </div>
+
+        {% if video_url %}
+        <div class="video-link">
+            <p>Your processed video is ready!</p>
+            <a href="{{ video_url }}" target="_blank">Click here to view the video</a>
+        </div>
+        {% endif %}
     </div>
+
+    <script>
+        // Update progress bar
+        function updateProgress() {
+            fetch('/progress')
+                .then(response => response.json())
+                .then(data => {
+                    var progressBar = document.getElementById('progress-bar');
+                    progressBar.style.width = data.progress + '%';
+
+                    if (data.progress < 100) {
+                        setTimeout(updateProgress, 1000);  // Update every second
+                    }
+                });
+        }
+
+        // Start progress updates when page loads
+        window.onload = function() {
+            updateProgress();
+        }
+    </script>
 </body>
 </html>
