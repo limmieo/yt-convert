@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request
 import subprocess
 import os
 import uuid
@@ -6,6 +6,7 @@ import random
 
 app = Flask(__name__)
 
+# Brands configuration
 BRANDS = {
     "thick_asian": {
         "metadata": "brand=thick_asian",
@@ -39,12 +40,13 @@ BRANDS = {
     }
 }
 
+# Route to render the index page
 @app.route('/')
 def index():
-    # Render the index.html page with the form
-    return render_template('index.html')
+    # Pass the BRANDS dictionary to the template
+    return render_template('index.html', brands=BRANDS)
 
-
+# Route to process the video and apply effects
 @app.route('/process', methods=['POST'])
 def process_video():
     video_url = request.form['video_url']
