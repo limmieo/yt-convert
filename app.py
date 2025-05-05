@@ -1,8 +1,10 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 import subprocess
 import os
 import uuid
 import random
+import threading
+import time
 
 app = Flask(__name__)
 
@@ -40,21 +42,11 @@ BRANDS = {
     }
 }
 
-# Route to render the index page
-@app.route('/')
-def index():
-    # Pass the BRANDS dictionary to the template
-    return render_template('index.html', brands=BRANDS)
+# Progress data for tracking the process
+progress_data = {"progress": 0}
 
-# Route to process the video and apply effects
-@app.route('/process', methods=['POST'])
-def process_video():
-    video_url = request.form['video_url']
-    selected_brand = request.form['brand']
-
-    if selected_brand not in BRANDS:
-        return {"error": "Unsupported brand selected."}, 400
-
+# Function to simulate video processing and update progress
+def process_video_in_background(video_url, selected_brand, progress_callback):
     input_file = f"/tmp/{uuid.uuid4()}.mp4"
     watermarked_file = f"/tmp/{uuid.uuid4()}_marked.mp4"
     final_output = f"/tmp/{uuid.uuid4()}_final.mp4"
@@ -73,7 +65,12 @@ def process_video():
             "wget", "--header=User-Agent: Mozilla/5.0", "-O", input_file, video_url
         ], check=True)
 
-        # Add processing logic for applying watermarks
+        # Simulate progress (for demonstration purposes)
+        for i in range(101):
+            time.sleep(0.1)  # Simulate processing delay
+            progress_callback(i)
+
+        # Apply video processing logic
         opacity_bounce = round(random.uniform(0.6, 0.7), 2)
         opacity_static = round(random.uniform(0.85, 0.95), 2)
         opacity_topleft = round(random.uniform(0.4, 0.6), 2)
@@ -128,7 +125,7 @@ def process_video():
             final_output
         ], check=True)
 
-        return render_template('processing.html', video_url=final_output)
+        return final_output
 
     except subprocess.CalledProcessError as e:
         return {"error": f"FFmpeg error: {str(e)}"}, 500
@@ -137,6 +134,31 @@ def process_video():
     finally:
         for f in [input_file, watermarked_file]:
             if os.path.exists(f): os.remove(f)
+
+
+@app.route('/process', methods=['POST'])
+def process_video_route():
+    video_url = request.form['video_url']
+    selected_brand = request.form['brand']
+
+    if selected_brand not in BRANDS:
+        return {"error": "Unsupported brand selected."}, 400
+
+    progress_data = {"progress": 0}
+
+    def update_progress(progress):
+        progress_data["progress"] = progress
+
+    # Start video processing in a separate thread
+    processing_thread = threading.Thread(target=process_video_in_background, args=(video_url, selected_brand, update_progress))
+    processing_thread.start()
+
+    return render_template('processing.html', video_url=None, progress=progress_data["progress"])
+
+
+@app.route('/progress', methods=['GET'])
+def get_progress():
+    return jsonify(progress=progress_data["progress"])
 
 
 if __name__ == "__main__":
