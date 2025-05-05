@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Processor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 500px;
+            margin: 40px auto;
+            background: #f7f7f7;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        h2 {
+            text-align: center;
+        }
+        input, select, button {
+            width: 100%;
+            padding: 12px;
+            font-size: 1em;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        button {
+            background-color: #28a745;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        .error-message {
+            color: red;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Process Your Video</h2>
+
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            <div class="error-message">
+                {% for msg in messages %}
+                    <p>{{ msg }}</p>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <form method="POST">
+        <label for="video_url">Video URL:</label>
+        <input type="text" id="video_url" name="video_url" placeholder="Enter video URL" required>
+
+        <label for="brand">Select Brand:</label>
+        <select id="brand" name="brand" required>
+            {% for key, value in brands.items() %}
+                <option value="{{ key }}">{{ value }}</option>
+            {% endfor %}
+        </select>
+
+        <button type="submit">Process Video</button>
+    </form>
+
+</body>
+</html>
