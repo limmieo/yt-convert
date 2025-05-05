@@ -26,7 +26,8 @@ BRANDS = {
             "gym_baddie_watermark.png",
             "gym_baddie_watermark_2.png",
             "gym_baddie_watermark_3.png"
-        ]
+        ],
+        "caption_file": "gym_baddie_captions.txt"
     },
     "polishedform": {
         "metadata": "brand=polishedform",
@@ -75,7 +76,7 @@ def process_video(brand):
         framerate = round(random.uniform(29.87, 30.1), 3)
         lut_filter = f"lut3d='{lut_path}'," if lut_path else ""
 
-        # Load caption if brand has a caption file
+        # Caption + black bar fade logic
         if "caption_file" in config:
             caption_file = os.path.join(assets_path, config["caption_file"])
             with open(caption_file, "r") as f:
@@ -83,11 +84,12 @@ def process_video(brand):
             chosen_caption = random.choice(captions)
             escaped_caption = chosen_caption.replace(":", "\\:").replace("'", "\\'")
             drawtext_filter = (
-                f"drawbox=y=0:color=black@0.6:width=iw:height=90:t=fill,"
+                f"drawbox=y=0:color=black@0.6:width=iw:height=90:t=fill:"
+                f"enable='gte(t,0)':alpha='if(lt(t,3),1,if(lt(t,4),1-(t-3),0))',"
                 f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
                 f"text='{escaped_caption}':fontcolor=white:fontsize=28:"
                 f"x=(w-text_w)/2:y=38:"
-                f"alpha='if(lt(t,0.5), 0, if(lt(t,3), 1, if(lt(t,4), 1-(t-3), 0)))',"
+                f"alpha='if(lt(t,3),1,if(lt(t,4),1-(t-3),0))',"
             )
         else:
             drawtext_filter = ""
