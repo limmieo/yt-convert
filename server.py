@@ -37,7 +37,8 @@ BRANDS = {
             "polished_watermark.png",
             "polished_watermark_2.png",
             "polished_watermark_3.png"
-        ]
+        ],
+        "caption_file": "polishedform_captions.txt"
     }
 }
 
@@ -76,7 +77,6 @@ def process_video(brand):
         framerate = round(random.uniform(29.87, 30.1), 3)
         lut_filter = f"lut3d='{lut_path}'," if lut_path else ""
 
-        # Caption with bounce and multiline support
         if "caption_file" in config:
             caption_file = os.path.join(assets_path, config["caption_file"])
             with open(caption_file, "r") as f:
