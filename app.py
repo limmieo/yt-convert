@@ -68,7 +68,7 @@ def process_video_in_background(video_url, selected_brand, progress_callback):
         # Simulate progress (for demonstration purposes)
         for i in range(101):
             time.sleep(0.1)  # Simulate processing delay
-            progress_callback(i)  # Update progress
+            progress_callback(i)
 
         # Apply video processing logic
         opacity_bounce = round(random.uniform(0.6, 0.7), 2)
