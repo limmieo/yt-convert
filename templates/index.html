@@ -1,104 +1,44 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Video Processor</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f7f7f7;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-    }
-    .card {
-      background: white;
-      width: 100%;
-      max-width: 500px;
-      padding: 2rem;
-      border-radius: 10px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-    h2 {
-      text-align: center;
-      margin-bottom: 1rem;
-    }
-    label {
-      display: block;
-      margin: 0.75rem 0 0.25rem;
-      font-weight: bold;
-    }
-    input, select, button {
-      width: 100%;
-      padding: 0.75rem;
-      font-size: 1rem;
-      margin-bottom: 1rem;
-      border-radius: 5px;
-      border: 1px solid #ccc;
-      box-sizing: border-box;
-    }
-    button {
-      background-color: #28a745;
-      color: white;
-      border: none;
-      font-weight: bold;
-      cursor: pointer;
-    }
-    button:hover {
-      background-color: #218838;
-    }
-    .error-message {
-      color: #c00;
-      background: #fee;
-      padding: 0.75rem;
-      border: 1px solid #faa;
-      border-radius: 5px;
-      margin-bottom: 1rem;
-      text-align: center;
-    }
+    body { font-family: Arial; max-width:500px; margin:40px auto; background:#f7f7f7; padding:20px; border-radius:8px; }
+    h2 { text-align:center; }
+    input, select, button { width:100%; padding:10px; margin:10px 0; border-radius:4px; border:1px solid #ccc; }
+    button { background:#28a745; color:#fff; font-weight:bold; cursor:pointer; }
+    button:hover { background:#218838; }
+    .flash { color:red; text-align:center; }
   </style>
 </head>
 <body>
+  <h2>Process Your Video</h2>
 
-  <div class="card">
-    <h2>Process Your Video</h2>
-
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <div class="error-message">
-          {% for msg in messages %}
-            <div>{{ msg }}</div>
-          {% endfor %}
-        </div>
-      {% endif %}
-    {% endwith %}
-
-    <form method="POST" action="/process">
-      <label for="video_url">Video URL</label>
-      <input
-        type="url"
-        id="video_url"
-        name="video_url"
-        placeholder="https://..."
-        required
-      />
-
-      <label for="brand">Select Brand</label>
-      <select id="brand" name="brand" required>
-        {% for key, cfg in brands.items() %}
-          <option value="{{ key }}">
-            {{ key.replace('_', ' ').title() }}
-          </option>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash">
+        {% for category, msg in messages %}
+          <p>{{ msg }}</p>
         {% endfor %}
-      </select>
+      </div>
+    {% endif %}
+  {% endwith %}
 
-      <button type="submit">Process Video</button>
-    </form>
-  </div>
+  <form method="POST" action="{{ url_for('process_video') }}">
+    <label for="video_url">Video URL:</label>
+    <input id="video_url" name="video_url" placeholder="https://..." required>
 
+    <label for="brand">Select Brand:</label>
+    <select id="brand" name="brand" required>
+      <option value="">— pick one —</option>
+      {% for key, cfg in brands.items() %}
+        <option value="{{ key }}">{{ key.replace('_',' ').title() }}</option>
+      {% endfor %}
+    </select>
+
+    <button type="submit">Process Video</button>
+  </form>
 </body>
 </html>
