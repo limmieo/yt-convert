@@ -113,10 +113,11 @@ def process_video(brand):
             "-map_metadata", "-1", "-map_chapters", "-1",
             "-r", str(framerate),
             "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
-            "-b:v", "5M", "-maxrate", "5M", "-bufsize", "10M",
-            "-preset", "ultrafast",
+            "-c:v", "libx265", "-preset", "medium",
+            "-crf", "20",
+            "-b:v", "10M", "-maxrate", "15M", "-bufsize", "30M",
             "-t", "40",
-            "-c:v", "libx264", "-c:a", "copy",
+            "-c:a", "copy",
             "-metadata", metadata_tag,
             watermarked_file
         ]
