@@ -65,7 +65,21 @@ def process_video(brand):
         lut_path = os.path.join(assets_path, config["lut"]) if config["lut"] else None
         caption_file = os.path.join(assets_path, config["captions_file"])
 
-        subprocess.run(["wget", "--header=User-Agent: Mozilla/5.0", "-O", input_file, video_url], check=True)
+        # Hybrid downloader: Try direct first, then yt-dlp
+        try:
+            subprocess.run([
+                "wget", "--header=User-Agent: Mozilla/5.0", "-O", input_file, video_url
+            ], check=True)
+            print("[Downloader] Success with wget.")
+        except subprocess.CalledProcessError:
+            print("[Downloader] wget failed, falling back to yt-dlp...")
+            subprocess.run([
+                "yt-dlp",
+                "-f", "bv*+ba/best",
+                "-o", input_file,
+                video_url
+            ], check=True)
+            print("[Downloader] Success with yt-dlp.")
 
         with open(caption_file, "r", encoding="utf-8") as f:
             captions = [line.strip() for line in f if line.strip()]
