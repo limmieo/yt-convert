@@ -65,7 +65,6 @@ def process_video(brand):
         lut_path = os.path.join(assets_path, config["lut"]) if config["lut"] else None
         caption_file = os.path.join(assets_path, config["captions_file"])
 
-        # Use yt-dlp for ALL downloads
         subprocess.run([
             "yt-dlp",
             "-f", "bv*+ba/best",
@@ -95,7 +94,7 @@ def process_video(brand):
         )
 
         filter_complex = (
-            f"[1:v]split=3[wm_bounce][wm_static][wm_top];"
+            f"[1:v]split[wm_bounce][wm_static][wm_top];"
             f"[wm_bounce]scale=iw*{scale_bounce}:ih*{scale_bounce},format=rgba,colorchannelmixer=aa={opacity_bounce}[bounce_out];"
             f"[wm_static]scale=iw*{scale_static}:ih*{scale_static},format=rgba,colorchannelmixer=aa={opacity_static}[static_out];"
             f"[wm_top]scale=iw*{scale_topleft}:ih*{scale_topleft},format=rgba,colorchannelmixer=aa={opacity_topleft}[top_out];"
