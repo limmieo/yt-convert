@@ -58,6 +58,7 @@ def process_video(brand):
     try:
         config = BRANDS[brand]
         metadata_tag = config["metadata"]
+        scroll_speed = config["scroll_speed"]
 
         assets_path = os.path.join(os.getcwd(), "assets")
         watermark_choice = os.path.join(assets_path, random.choice(config["watermarks"]))
@@ -70,6 +71,7 @@ def process_video(brand):
             "-o", input_file,
             video_url
         ], check=True)
+        print(f"[Downloader] yt-dlp downloaded: {input_file}")
 
         with open(caption_file, "r", encoding="utf-8") as f:
             captions = [line.strip() for line in f if line.strip()]
@@ -77,9 +79,11 @@ def process_video(brand):
 
         opacity_bounce = round(random.uniform(0.6, 0.7), 2)
         opacity_static = round(random.uniform(0.85, 0.95), 2)
+        opacity_topleft = round(random.uniform(0.4, 0.6), 2)
 
         scale_bounce = random.uniform(0.85, 1.0)
         scale_static = random.uniform(1.1, 1.25)
+        scale_topleft = random.uniform(0.9, 1.1)
 
         framerate = round(random.uniform(29.87, 30.1), 3)
         lut_filter = f"lut3d='{lut_path}'," if lut_path else ""
@@ -90,9 +94,10 @@ def process_video(brand):
         )
 
         filter_complex = (
-            f"[1:v]split=2[wm_bounce][wm_static];"
+            f"[1:v]split=3[wm_bounce][wm_static][wm_top];"
             f"[wm_bounce]scale=iw*{scale_bounce}:ih*{scale_bounce},format=rgba,colorchannelmixer=aa={opacity_bounce}[bounce_out];"
             f"[wm_static]scale=iw*{scale_static}:ih*{scale_static},format=rgba,colorchannelmixer=aa={opacity_static}[static_out];"
+            f"[wm_top]scale=iw*{scale_topleft}:ih*{scale_topleft},format=rgba,colorchannelmixer=aa={opacity_topleft}[top_out];"
             f"[0:v]hflip,setpts=PTS+0.001/TB,"
             f"scale=iw*0.98:ih*0.98,"
             f"crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
@@ -101,11 +106,13 @@ def process_video(brand):
             f"eq=brightness=0.01:contrast=1.02:saturation=1.03,"
             f"{text_filters}[base];"
             f"[base][bounce_out]overlay=x='main_w-w-30+10*sin(t*3)':y='main_h-h-60+5*sin(t*2)'[step1];"
-            f"[step1][static_out]overlay=x='(main_w-w)/2':y='main_h-h-10'[final]"
+            f"[step1][static_out]overlay=x='(main_w-w)/2':y='main_h-h-10'[step2];"
+            f"[step2][top_out]overlay=x='mod((t*{scroll_speed}),(main_w+w))-w':y=60,"
+            f"scale=trunc(iw/2)*2:trunc(ih/2)*2[final]"
         )
 
         command = [
-            "ffmpeg", "-y", "-i", input_file,
+            "ffmpeg", "-i", input_file,
             "-i", watermark_choice,
             "-filter_complex", filter_complex,
             "-map", "[final]", "-map", "0:a?",
@@ -124,7 +131,7 @@ def process_video(brand):
         subprocess.run(command, check=True)
 
         subprocess.run([
-            "ffmpeg", "-y", "-i", watermarked_file,
+            "ffmpeg", "-i", watermarked_file,
             "-map_metadata", "-1", "-map_chapters", "-1",
             "-c:v", "copy", "-c:a", "copy",
             "-metadata", metadata_tag,
@@ -139,7 +146,8 @@ def process_video(brand):
         return {"error": f"Unexpected error: {str(e)}"}, 500
     finally:
         for f in [input_file, watermarked_file]:
-            if os.path.exists(f): os.remove(f)
+            if os.path.exists(f):
+                os.remove(f)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
