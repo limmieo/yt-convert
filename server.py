@@ -58,7 +58,6 @@ def process_video(brand):
     try:
         config = BRANDS[brand]
         metadata_tag = config["metadata"]
-        scroll_speed = config["scroll_speed"]
 
         assets_path = os.path.join(os.getcwd(), "assets")
         watermark_choice = os.path.join(assets_path, random.choice(config["watermarks"]))
@@ -71,7 +70,6 @@ def process_video(brand):
             "-o", input_file,
             video_url
         ], check=True)
-        print(f"[Downloader] yt-dlp downloaded: {input_file}")
 
         with open(caption_file, "r", encoding="utf-8") as f:
             captions = [line.strip() for line in f if line.strip()]
@@ -92,7 +90,7 @@ def process_video(brand):
         )
 
         filter_complex = (
-            f"[1:v]split[wm_bounce][wm_static];"
+            f"[1:v]split=2[wm_bounce][wm_static];"
             f"[wm_bounce]scale=iw*{scale_bounce}:ih*{scale_bounce},format=rgba,colorchannelmixer=aa={opacity_bounce}[bounce_out];"
             f"[wm_static]scale=iw*{scale_static}:ih*{scale_static},format=rgba,colorchannelmixer=aa={opacity_static}[static_out];"
             f"[0:v]hflip,setpts=PTS+0.001/TB,"
@@ -103,12 +101,11 @@ def process_video(brand):
             f"eq=brightness=0.01:contrast=1.02:saturation=1.03,"
             f"{text_filters}[base];"
             f"[base][bounce_out]overlay=x='main_w-w-30+10*sin(t*3)':y='main_h-h-60+5*sin(t*2)'[step1];"
-            f"[step1][static_out]overlay=x='(main_w-w)/2':y='main_h-h-10',"
-            f"scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
+            f"[step1][static_out]overlay=x='(main_w-w)/2':y='main_h-h-10'[final]"
         )
 
         command = [
-            "ffmpeg", "-i", input_file,
+            "ffmpeg", "-y", "-i", input_file,
             "-i", watermark_choice,
             "-filter_complex", filter_complex,
             "-map", "[final]", "-map", "0:a?",
@@ -127,7 +124,7 @@ def process_video(brand):
         subprocess.run(command, check=True)
 
         subprocess.run([
-            "ffmpeg", "-i", watermarked_file,
+            "ffmpeg", "-y", "-i", watermarked_file,
             "-map_metadata", "-1", "-map_chapters", "-1",
             "-c:v", "copy", "-c:a", "copy",
             "-metadata", metadata_tag,
