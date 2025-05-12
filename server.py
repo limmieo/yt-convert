@@ -79,11 +79,9 @@ def process_video(brand):
 
         opacity_bounce = round(random.uniform(0.6, 0.7), 2)
         opacity_static = round(random.uniform(0.85, 0.95), 2)
-        opacity_topleft = round(random.uniform(0.4, 0.6), 2)
 
         scale_bounce = random.uniform(0.85, 1.0)
         scale_static = random.uniform(1.1, 1.25)
-        scale_topleft = random.uniform(0.9, 1.1)
 
         framerate = round(random.uniform(29.87, 30.1), 3)
         lut_filter = f"lut3d='{lut_path}'," if lut_path else ""
@@ -94,10 +92,9 @@ def process_video(brand):
         )
 
         filter_complex = (
-            f"[1:v]split[wm_bounce][wm_static][wm_top];"
+            f"[1:v]split[wm_bounce][wm_static];"
             f"[wm_bounce]scale=iw*{scale_bounce}:ih*{scale_bounce},format=rgba,colorchannelmixer=aa={opacity_bounce}[bounce_out];"
             f"[wm_static]scale=iw*{scale_static}:ih*{scale_static},format=rgba,colorchannelmixer=aa={opacity_static}[static_out];"
-            f"[wm_top]scale=iw*{scale_topleft}:ih*{scale_topleft},format=rgba,colorchannelmixer=aa={opacity_topleft}[top_out];"
             f"[0:v]hflip,setpts=PTS+0.001/TB,"
             f"scale=iw*0.98:ih*0.98,"
             f"crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
@@ -106,8 +103,7 @@ def process_video(brand):
             f"eq=brightness=0.01:contrast=1.02:saturation=1.03,"
             f"{text_filters}[base];"
             f"[base][bounce_out]overlay=x='main_w-w-30+10*sin(t*3)':y='main_h-h-60+5*sin(t*2)'[step1];"
-            f"[step1][static_out]overlay=x='(main_w-w)/2':y='main_h-h-10'[step2];"
-            f"[step2][top_out]overlay=x='mod((t*{scroll_speed}),(main_w+w))-w':y=60,"
+            f"[step1][static_out]overlay=x='(main_w-w)/2':y='main_h-h-10',"
             f"scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
