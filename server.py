@@ -141,11 +141,7 @@ def process_video(brand):
             final_output
         ], check=True)
 
-        return {
-            "status": "success",
-            "original_caption": request.json.get("original_caption", ""),
-            "message": "Video processed successfully."
-        }
+        return send_file(final_output, as_attachment=True)
 
     except subprocess.CalledProcessError as e:
         return {"error": f"FFmpeg error: {str(e)}"}, 500
