@@ -97,7 +97,7 @@ def process_video(brand):
 
         filter_complex = (
             f"format=yuv420p,"
-            f"[1:v]split[wm_bounce][wm_static][wm_top];"
+            f"[1:v]loop=loop=-1:size=1:start=0,split[wm_bounce][wm_static][wm_top];"
             f"[wm_bounce]scale=iw*{scale_bounce}:ih*{scale_bounce},format=rgba,colorchannelmixer=aa={opacity_bounce}[bounce_out];"
             f"[wm_static]scale=iw*{scale_static}:ih*{scale_static},format=rgba,colorchannelmixer=aa={opacity_static}[static_out];"
             f"[wm_top]scale=iw*{scale_topleft}:ih*{scale_topleft},format=rgba,colorchannelmixer=aa={opacity_topleft}[top_out];"
