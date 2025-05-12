@@ -65,15 +65,14 @@ def process_video(brand):
         lut_path = os.path.join(assets_path, config["lut"]) if config["lut"] else None
         caption_file = os.path.join(assets_path, config["captions_file"])
 
-        print(f"[DEBUG] Downloading with yt-dlp: {video_url}")
+        # Use yt-dlp for ALL downloads
         subprocess.run([
             "yt-dlp",
-            "-f", "bv*[vcodec^=avc1]+ba/best",
+            "-f", "bv*+ba/best",
             "-o", input_file,
             video_url
         ], check=True)
-        print(f"[DEBUG] Video downloaded to: {input_file}")
-        print(f"[DEBUG] Watermark used: {watermark_choice}")
+        print(f"[Downloader] yt-dlp downloaded: {input_file}")
 
         with open(caption_file, "r", encoding="utf-8") as f:
             captions = [line.strip() for line in f if line.strip()]
@@ -96,7 +95,6 @@ def process_video(brand):
         )
 
         filter_complex = (
-            f"format=yuv420p,"
             f"[1:v]split=3[wm_bounce][wm_static][wm_top];"
             f"[wm_bounce]scale=iw*{scale_bounce}:ih*{scale_bounce},format=rgba,colorchannelmixer=aa={opacity_bounce}[bounce_out];"
             f"[wm_static]scale=iw*{scale_static}:ih*{scale_static},format=rgba,colorchannelmixer=aa={opacity_static}[static_out];"
