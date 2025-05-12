@@ -125,4 +125,38 @@ def process_video(brand):
             "-r", str(framerate),
             "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
             "-c:v", "libx265", "-preset", "medium",
-            "-crf
+            "-crf", "20",
+            "-b:v", "10M", "-maxrate", "15M", "-bufsize", "30M",
+            "-t", "40",
+            "-c:a", "copy",
+            "-metadata", metadata_tag,
+            watermarked_file
+        ]
+
+        subprocess.run(command, check=True)
+
+        subprocess.run([
+            "ffmpeg", "-i", watermarked_file,
+            "-map_metadata", "-1", "-map_chapters", "-1",
+            "-c:v", "copy", "-c:a", "copy",
+            "-metadata", metadata_tag,
+            final_output
+        ], check=True)
+
+        return {
+            "status": "success",
+            "original_caption": request.json.get("original_caption", ""),
+            "message": "Video processed successfully."
+        }
+
+    except subprocess.CalledProcessError as e:
+        return {"error": f"FFmpeg error: {str(e)}"}, 500
+    except Exception as e:
+        return {"error": f"Unexpected error: {str(e)}"}, 500
+    finally:
+        for f in [input_file, watermarked_file]:
+            if os.path.exists(f): os.remove(f)
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
