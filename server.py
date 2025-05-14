@@ -1,4 +1,3 @@
-
 from flask import Flask, request, send_file
 import subprocess
 import uuid
@@ -52,78 +51,96 @@ def process_video(brand):
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
 
-    input_file = f"/tmp/{uuid.uuid4()}.mp4"
+    input_file       = f"/tmp/{uuid.uuid4()}.mp4"
     watermarked_file = f"/tmp/{uuid.uuid4()}_marked.mp4"
-    final_output = f"/tmp/{uuid.uuid4()}_final.mp4"
+    final_output     = f"/tmp/{uuid.uuid4()}_final.mp4"
 
     try:
-        config = BRANDS[brand]
-        metadata_tag = config["metadata"]
-        scroll_speed = config["scroll_speed"]
+        cfg           = BRANDS[brand]
+        metadata_tag  = cfg["metadata"]
+        speed         = cfg["scroll_speed"]
+        assets_dir    = os.path.join(os.getcwd(), "assets")
+        wm            = os.path.join(assets_dir, random.choice(cfg["watermarks"]))
+        lut_path      = os.path.join(assets_dir, cfg["lut"]) if cfg["lut"] else None
+        captions_file = os.path.join(assets_dir, cfg["captions_file"])
 
-        assets_path = os.path.join(os.getcwd(), "assets")
-        watermark_choice = os.path.join(assets_path, random.choice(config["watermarks"]))
-        lut_path = os.path.join(assets_path, config["lut"]) if config["lut"] else None
-        caption_file = os.path.join(assets_path, config["captions_file"])
+        # download
+        subprocess.run([
+            "wget", "--header=User-Agent: Mozilla/5.0",
+            "-O", input_file, video_url
+        ], check=True)
 
-        subprocess.run(["wget", "--header=User-Agent: Mozilla/5.0", "-O", input_file, video_url], check=True)
+        # pick a caption
+        with open(captions_file, "r", encoding="utf-8") as f:
+            lines = [l.strip() for l in f if l.strip()]
+        caption = random.choice(lines).replace("'", "\\'")
 
-        with open(caption_file, "r", encoding="utf-8") as f:
-            captions = [line.strip() for line in f if line.strip()]
-        selected_caption = random.choice(captions).replace("'", "\\'")
+        # dynamic watermark parameters
+        ob = round(random.uniform(0.6, 0.7), 2)
+        os_ = round(random.uniform(0.85, 0.95), 2)
+        ot = round(random.uniform(0.4, 0.6), 2)
+        sb = random.uniform(0.85, 1.0)
+        ss = random.uniform(1.1, 1.25)
+        st = random.uniform(0.9, 1.1)
+        fr = round(random.uniform(29.87, 30.1), 3)
+        lut_f = f"lut3d='{lut_path}'," if lut_path else ""
 
-        opacity_bounce = round(random.uniform(0.6, 0.7), 2)
-        opacity_static = round(random.uniform(0.85, 0.95), 2)
-        opacity_topleft = round(random.uniform(0.4, 0.6), 2)
-
-        scale_bounce = random.uniform(0.85, 1.0)
-        scale_static = random.uniform(1.1, 1.25)
-        scale_topleft = random.uniform(0.9, 1.1)
-
-        framerate = round(random.uniform(29.87, 30.1), 3)
-        lut_filter = f"lut3d='{lut_path}'," if lut_path else ""
-
-        text_filters = (
-            "drawbox=x=0:y=60:width=iw:height=40:color=black@0.6:t=fill:enable='between(t,0,4)',"
-            f"drawtext=text='{selected_caption}':fontcolor=white:fontsize=28:x=(w-text_w)/2:y=70:enable='between(t,0,4)':alpha='if(lt(t,3),1,1-(t-3))'"
+        # centered caption bar + text
+        CAP_H = 40
+        caption_box = (
+            f"drawbox=x=0:y=(h-{CAP_H})/2:width=iw:height={CAP_H}:"
+            "color=black@0.6:t=fill:enable='between(t,0,4)',"
+        )
+        text_filter = (
+            f"drawtext=text='{caption}':fontcolor=white:fontsize=28:"
+            "x=(w-text_w)/2:y=(h-text_h)/2:"
+            "enable='between(t,0,4)':alpha='if(lt(t,3),1,1-(t-3))'"
         )
 
-        filter_complex = (
+        # build filter_complex
+        fc = (
             f"[1:v]split=3[wm_bounce][wm_static][wm_top];"
-            f"[wm_bounce]scale=iw*{scale_bounce}:ih*{scale_bounce},format=rgba,colorchannelmixer=aa={opacity_bounce}[bounce_out];"
-            f"[wm_static]scale=iw*{scale_static}:ih*{scale_static},format=rgba,colorchannelmixer=aa={opacity_static}[static_out];"
-            f"[wm_top]scale=iw*{scale_topleft}:ih*{scale_topleft},format=rgba,colorchannelmixer=aa={opacity_topleft}[top_out];"
+            f"[wm_bounce]scale=iw*{sb}:ih*{sb},format=rgba,"
+              f"colorchannelmixer=aa={ob}[bounce];"
+            f"[wm_static]scale=iw*{ss}:ih*{ss},format=rgba,"
+              f"colorchannelmixer=aa={os_}[static];"
+            f"[wm_top]scale=iw*{st}:ih*{st},format=rgba,"
+              f"colorchannelmixer=aa={ot}[top];"
             f"[0:v]hflip,setpts=PTS+0.001/TB,"
-            f"scale=iw*0.98:ih*0.98,"
-            f"crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
-            f"{lut_filter}"
-            f"pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
-            f"eq=brightness=0.01:contrast=1.02:saturation=1.03,"
-            f"{text_filters}[base];"
-            f"[base][bounce_out]overlay=x='main_w-w-30+10*sin(t*3)':y='main_h-h-60+5*sin(t*2)'[step1];"
-            f"[step1][static_out]overlay=x='(main_w-w)/2':y='main_h-h-10'[step2];"
-            f"[step2][top_out]overlay=x='mod((t*{scroll_speed}),(main_w+w))-w':y=60,"
-            f"scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
+              "scale=iw*0.98:ih*0.98,"
+              "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
+              f"{lut_f}"
+              "pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
+              "eq=brightness=0.01:contrast=1.02:saturation=1.03,"
+            f"{caption_box}{text_filter}[base];"
+            f"[base][bounce]overlay=x='main_w-w-30+10*sin(t*3)':"
+              "y='main_h-h-60+5*sin(t*2)'[s1];"
+            f"[s1][static]overlay=x='(main_w-w)/2':y='main_h-h-10'[s2];"
+            f"[s2][top]overlay=x='mod(t*{speed},main_w+w)-w':y=60,"
+              "scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
-        command = [
+        # render with high quality
+        cmd1 = [
             "ffmpeg", "-i", input_file,
-            "-i", watermark_choice,
-            "-filter_complex", filter_complex,
+            "-i", wm,
+            "-filter_complex", fc,
             "-map", "[final]", "-map", "0:a?",
             "-map_metadata", "-1", "-map_chapters", "-1",
-            "-r", str(framerate),
+            "-r", str(fr),
             "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
-            "-b:v", "5M", "-maxrate", "5M", "-bufsize", "10M",
-            "-preset", "ultrafast",
+            "-b:v", "8M", "-maxrate", "8M", "-bufsize", "16M",
+            "-preset", "slow",
+            "-profile:v", "high",
             "-t", "40",
-            "-c:v", "libx264", "-c:a", "copy",
+            "-c:v", "libx264",
+            "-c:a", "copy",
             "-metadata", metadata_tag,
             watermarked_file
         ]
+        subprocess.run(cmd1, check=True)
 
-        subprocess.run(command, check=True)
-
+        # strip containers
         subprocess.run([
             "ffmpeg", "-i", watermarked_file,
             "-map_metadata", "-1", "-map_chapters", "-1",
@@ -135,13 +152,13 @@ def process_video(brand):
         return send_file(final_output, as_attachment=True)
 
     except subprocess.CalledProcessError as e:
-        return {"error": f"FFmpeg error: {str(e)}"}, 500
+        return {"error": f"FFmpeg error: {e}"}, 500
     except Exception as e:
-        return {"error": f"Unexpected error: {str(e)}"}, 500
+        return {"error": f"Unexpected error: {e}"}, 500
     finally:
-        for f in [input_file, watermarked_file]:
-            if os.path.exists(f): os.remove(f)
+        for p in (input_file, watermarked_file):
+            if os.path.exists(p):
+                os.remove(p)
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT",5000)))
