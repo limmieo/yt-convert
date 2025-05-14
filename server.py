@@ -46,7 +46,6 @@ def process_video(brand):
     if not url:
         return {"error": "Missing video_url"}, 400
 
-    # temp files
     in_tmp  = f"/tmp/{uuid.uuid4()}.mp4"
     mid_tmp = f"/tmp/{uuid.uuid4()}_mid.mp4"
     out_tmp = f"/tmp/{uuid.uuid4()}_final.mp4"
@@ -60,52 +59,41 @@ def process_video(brand):
     speed      = cfg["scroll_speed"]
 
     try:
-        # download
         subprocess.run(["wget","-q","-O",in_tmp,url], check=True)
 
-        # pick a caption
         with open(caps_file, "r", encoding="utf-8") as f:
             lines = [l.strip() for l in f if l.strip()]
         caption = random.choice(lines).replace("'", r"\'")
 
-        # build a properly‐chained filter_complex using iw/ih
+        # corrected filter_complex: use main_w/main_h in overlays
         fc = (
-            # normalize to yuv
             "[0:v]format=yuv420p[n0];"
-            # top watermark
-            f"movie={wm_top}[wt];[n0][wt]overlay=x=(iw-w)/2:y=10[n1];"
-            # caption box + fade‐out text
+            f"movie={wm_top}[wt];[n0][wt]overlay="
+              "x='(main_w-w)/2':y=10[n1];"
             "[n1]drawbox=x=0:y=70:w=iw:h=50:color=black@0.6:t=fill[n2];"
             f"[n2]drawtext=text='{caption}':fontcolor=white:fontsize=24:"
-            "x=(iw-text_w)/2:y=80:alpha='if(lt(t,3),1,1-(t-3))'[n3];"
-            # bottom static watermark
-            f"movie={wm_bot}[wb];[n3][wb]overlay=x=(iw-w)/2:y=ih-h-20[n4];"
-            # moving watermark
+              "x='(iw-text_w)/2':y=80:alpha='if(lt(t,3),1,1-(t-3))'[n3];"
+            f"movie={wm_bot}[wb];[n3][wb]overlay="
+              "x='(main_w-w)/2':y='main_h-h-20'[n4];"
             f"movie={wm_mov}[wm];[n4][wm]overlay="
-              f"x='mod(t*{speed},iw+w)-w':y=ih-h-60[n5];"
-            # force even dims & label final
+              f"x='mod(t*{speed},main_w+w)-w':y='main_h-h-60'[n5];"
             "[n5]scale='trunc(iw/2)*2:trunc(ih/2)*2'[outv]"
         )
 
-        # first pass: apply all filters, high‐quality H.264
         cmd1 = [
             "ffmpeg","-y",
             "-i", in_tmp,
             "-filter_complex", fc,
             "-map", "[outv]",
-            "-map", "0:a?",                 # copy any audio
-            "-c:v", "libx264",              # H.264
-            "-crf", "18",                   # sharper
-            "-preset", "slow",
-            "-profile:v", "high",
-            "-movflags", "+faststart",
+            "-map", "0:a?",
+            "-c:v", "libx264", "-crf", "18", "-preset", "slow",
+            "-profile:v", "high", "-movflags", "+faststart",
             "-c:a", "copy",
             "-metadata", cfg["metadata"],
             mid_tmp
         ]
         subprocess.run(cmd1, check=True)
 
-        # finalize: strip any leftover data
         cmd2 = [
             "ffmpeg","-y",
             "-i", mid_tmp,
