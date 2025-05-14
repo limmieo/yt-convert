@@ -51,9 +51,9 @@ def process_video(brand):
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
 
-    in_f   = f"/tmp/{uuid.uuid4()}.mp4"
-    mid_f  = f"/tmp/{uuid.uuid4()}_marked.mp4"
-    out_f  = f"/tmp/{uuid.uuid4()}_final.mp4"
+    in_f  = f"/tmp/{uuid.uuid4()}.mp4"
+    mid_f = f"/tmp/{uuid.uuid4()}_marked.mp4"
+    out_f = f"/tmp/{uuid.uuid4()}_final.mp4"
 
     try:
         cfg          = BRANDS[brand]
@@ -64,7 +64,7 @@ def process_video(brand):
         lut_path     = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
         cap_file     = os.path.join(assets, cfg["captions_file"])
 
-        # download video
+        # download
         subprocess.run(
             ["wget","--header=User-Agent: Mozilla/5.0","-O",in_f,video_url],
             check=True
@@ -75,7 +75,7 @@ def process_video(brand):
             caps = [l.strip() for l in f if l.strip()]
         caption = random.choice(caps).replace("'", "\\'")
 
-        # watermark vars
+        # random watermark params
         ob = round(random.uniform(0.6,0.7),2)
         os_ = round(random.uniform(0.85,0.95),2)
         ot = round(random.uniform(0.4,0.6),2)
@@ -85,20 +85,18 @@ def process_video(brand):
         fr = round(random.uniform(29.87,30.1),3)
         lut_f = f"lut3d='{lut_path}'," if lut_path else ""
 
-        # centered caption bar + text
-        CAP_H = 50
-        cap_box = (
-            f"drawbox=x=0:y=(h-{CAP_H})/2:width=iw:height={CAP_H}:"
-            "color=black@0.6:t=fill:enable='between(t,0,4)',"
-        )
+        # single drawtext with built-in box, perfectly centered
         txt = (
-            f"drawtext=text='{caption}':fontcolor=white:fontsize=28:"
+            f"drawtext=text='{caption}':"
+            "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
+            "fontcolor=white:fontsize=28:"
+            "box=1:boxcolor=black@0.6:boxborderw=10:"
             "x=(w-text_w)/2:y=(h-text_h)/2:"
             "enable='between(t,0,4)':"
             "alpha='if(lt(t,3),1,1-(t-3))'"
         )
 
-        # filter chain, ending with a reel‐sized scale+pad to 1080x1920
+        # full filter chain + force 1080×1920 reel output
         fc = (
             "[1:v]split=3[wm_bounce][wm_static][wm_top];"
             f"[wm_bounce]scale=iw*{sb}:ih*{sb},format=rgba,"
@@ -113,19 +111,19 @@ def process_video(brand):
               f"{lut_f}"
               "pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
               "eq=brightness=0.01:contrast=1.02:saturation=1.03,"
-            f"{cap_box}{txt}[base];"
+            f"{txt}[base];"
             "[base][bounce]overlay="
               "x='main_w-w-30+10*sin(t*3)':y='main_h-h-60+5*sin(t*2)'[s1];"
             "[s1][static]overlay="
               "x='(main_w-w)/2':y='main_h-h-10'[s2];"
             "[s2][top]overlay="
               f"x='mod(t*{speed},main_w+w)-w':y=60[s3];"
-            # now force EXACT 1080x1920 output:
-            "[s3]scale=1080:1920:force_original_aspect_ratio=decrease,"  
+            # reel‐size
+            "[s3]scale=1080:1920:force_original_aspect_ratio=decrease,"
             "pad=1080:1920:(1080-iw)/2:(1920-ih)/2:black[outv]"
         )
 
-        # first pass: lossless CRF 0, placebo preset
+        # lossless CRF-0/placebo for max quality
         cmd1 = [
             "ffmpeg","-i",in_f,
             "-i",wm,
@@ -142,7 +140,7 @@ def process_video(brand):
         ]
         subprocess.run(cmd1, check=True)
 
-        # strip metadata + chapters
+        # strip extras
         subprocess.run([
             "ffmpeg","-i",mid_f,
             "-map_metadata","-1","-map_chapters","-1",
