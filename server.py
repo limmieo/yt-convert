@@ -3,125 +3,101 @@ import subprocess
 import uuid
 import os
 import random
+import yaml
 
 app = Flask(__name__)
 
-BRANDS = {
-    "thick_asian": {
-        "metadata": "brand=thick_asian",
-        "lut": "Cobi_3.CUBE",
-        "scroll_speed": 80,
-        "watermarks": [
-            "Thick_asian_watermark.png",
-            "Thick_asian_watermark_2.png",
-            "Thick_asian_watermark_3.png"
-        ],
-        "captions_file": "thick_asian_captions.txt"
-    },
-    "gym_baddie": {
-        "metadata": "brand=gym_baddie",
-        "lut": "Cobi_3.CUBE",
-        "scroll_speed": 120,
-        "watermarks": [
-            "gym_baddie_watermark.png",
-            "gym_baddie_watermark_2.png",
-            "gym_baddie_watermark_3.png"
-        ],
-        "captions_file": "gym_baddie_captions.txt"
-    },
-    "polishedform": {
-        "metadata": "brand=polishedform",
-        "lut": None,
-        "scroll_speed": 80,
-        "watermarks": [
-            "polished_watermark.png",
-            "polished_watermark_2.png",
-            "polished_watermark_3.png"
-        ],
-        "captions_file": "polishedform_captions.txt"
-    }
-}
+# Load brand configurations from external YAML
+config_path = os.path.join(os.getcwd(), "config", "brands.yaml")
+with open(config_path, 'r', encoding='utf-8') as cfg_file:
+    BRANDS = yaml.safe_load(cfg_file)
 
 @app.route('/process/<brand>', methods=['POST'])
 def process_video(brand):
     if brand not in BRANDS:
         return {"error": f"Unsupported brand '{brand}'."}, 400
 
-    video_url = request.json.get('video_url')
+    data = request.get_json() or {}
+    video_url = data.get('video_url')
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
 
+    # Prepare temp file paths
     input_file = f"/tmp/{uuid.uuid4()}.mp4"
     watermarked_file = f"/tmp/{uuid.uuid4()}_marked.mp4"
     final_output = f"/tmp/{uuid.uuid4()}_final.mp4"
 
     try:
         cfg = BRANDS[brand]
-        metadata_tag = cfg["metadata"]
-        scroll_speed = cfg["scroll_speed"]
+        metadata_tag = cfg['metadata']
+        scroll_speed = cfg['scroll_speed']
 
-        assets = os.path.join(os.getcwd(), "assets")
-        watermark = os.path.join(assets, random.choice(cfg["watermarks"]))
-        lut = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
-        caps = os.path.join(assets, cfg["captions_file"])
+        assets_dir = os.path.join(os.getcwd(), 'assets')
+        watermark_file = os.path.join(assets_dir, random.choice(cfg['watermarks']))
+        lut_file = os.path.join(assets_dir, cfg['lut']) if cfg.get('lut') else None
+        captions_file = os.path.join(assets_dir, cfg['captions_file'])
 
-        subprocess.run(["wget", "--header=User-Agent: Mozilla/5.0", "-O", input_file, video_url], check=True)
+        # Download input video
+        subprocess.run([
+            'wget', '--header=User-Agent: Mozilla/5.0', '-O', input_file, video_url
+        ], check=True)
 
-        with open(caps, "r", encoding="utf-8") as f:
-            lines = [l.strip() for l in f if l.strip()]
-        caption = random.choice(lines).replace("'", "\\'")
+        # Pick a random caption
+        with open(captions_file, 'r', encoding='utf-8') as f:
+            captions = [line.strip() for line in f if line.strip()]
+        caption = random.choice(captions).replace("'", "\\'")
 
-        # dynamic parameters
+        # Randomized filter parameters
         ob, os_, ot = [round(random.uniform(a, b), 2) for a,b in [(0.6,0.7),(0.85,0.95),(0.4,0.6)]]
         sb, ss, st = [random.uniform(a, b) for a,b in [(0.85,1.0),(1.1,1.25),(0.9,1.1)]]
         fr = round(random.uniform(29.87, 30.1), 3)
-        lut_f = f"lut3d='{lut}'," if lut else ""
+        lut_filter = f"lut3d='{lut_file}'," if lut_file else ''
 
-        # caption/text overlay
-        text_f = (
-            "drawbox=x=0:y=60:width=iw:height=40:color=black@0.6:t=fill:enable='between(t,0,4)',"
-            f"drawtext=text='{caption}':fontcolor=white:fontsize=28:x=(w-text_w)/2:y=70:"
-            "enable='between(t,0,4)':alpha='if(lt(t,3),1,1-(t-3))'"
-        )
-
+        # Build filter_complex: center caption bar + text, overlays, then scale/pad to 1080x1920 for Reels
         fc = (
-            "[1:v]split=3[wm_b][wm_s][wm_t];"
-            f"[wm_b]scale=iw*{sb}:ih*{sb},format=rgba,colorchannelmixer=aa={ob}[b_out];"
-            f"[wm_s]scale=iw*{ss}:ih*{ss},format=rgba,colorchannelmixer=aa={os_}[s_out];"
-            f"[wm_t]scale=iw*{st}:ih*{st},format=rgba,colorchannelmixer=aa={ot}[t_out];"
-            "[0:v]hflip,setpts=PTS+0.001/TB,"
-            "scale=iw*0.98:ih*0.98,"
-            "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
-            f"{lut_f}"
+            "[1:v]split=3[bounce][static][top];"
+            f"[bounce]scale=iw*{sb}:ih*{sb},format=rgba,colorchannelmixer=aa={ob}[b_out];"
+            f"[static]scale=iw*{ss}:ih*{ss},format=rgba,colorchannelmixer=aa={os_}[s_out];"
+            f"[top]scale=iw*{st}:ih*{st},format=rgba,colorchannelmixer=aa={ot}[t_out];"
+            "[0:v]hflip,scale=iw*0.98:ih*0.98,crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
+            f"{lut_filter}"
             "pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
             "eq=brightness=0.01:contrast=1.02:saturation=1.03,"
-            f"{text_f}[base];"
-            "[base][b_out]overlay=x='main_w-w-30+10*sin(t*3)':y='main_h-h-60+5*sin(t*2)'[s1];"
+            # draw centered bar + text
+            "drawbox=x=0:y=(ih-40)/2:width=iw:height=40:color=black@0.6:t=fill:enable='between(t,0,4)',"
+            f"drawtext=text='{caption}':fontcolor=white:fontsize=28:x=(w-text_w)/2:y=(h-text_h)/2:enable='between(t,0,4)':alpha='if(lt(t,3),1,1-(t-3))'[base];"
+            # overlays
+            "[base][b_out]overlay=x='main_w-w-30':y='main_h-h-60'[s1];"
             "[s1][s_out]overlay=x='(main_w-w)/2':y='main_h-h-10'[s2];"
-            f"[s2][t_out]overlay=x='mod((t*{scroll_speed}),(main_w+w))-w':y=60,scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
+            f"[s2][t_out]overlay=x='mod((t*{scroll_speed}),(main_w+w))-w':y=60[preout];"
+            # finally, ensure Reels resolution 1080x1920
+            "[preout]scale=1080:1920:force_original_aspect_ratio=decrease,"  
+            "pad=1080:1920:(1080-iw)/2:(1920-ih)/2:color=black[final]"
         )
 
         cmd1 = [
-            "ffmpeg", "-i", input_file,
-            "-i", watermark,
-            "-filter_complex", fc,
-            "-map", "[final]", "-map", "0:a?",
-            "-map_metadata", "-1", "-map_chapters", "-1",
-            "-r", str(fr),
-            "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
-            "-crf", "0", "-preset", "placebo", "-profile:v", "high444",
-            "-t", "40",
-            "-c:v", "libx264", "-c:a", "copy",
-            "-metadata", metadata_tag,
+            'ffmpeg', '-i', input_file,
+            '-i', watermark_file,
+            '-filter_complex', fc,
+            '-map', '[final]', '-map', '0:a?',
+            '-map_metadata', '-1', '-map_chapters', '-1',
+            '-r', str(fr),
+            '-g', '48', '-keyint_min', '24', '-sc_threshold', '0',
+            # high-quality H.264
+            '-c:v', 'libx264', '-crf', '18', '-preset', 'slow', '-profile:v', 'high',
+            '-c:a', 'copy',
+            '-t', '40',
+            '-metadata', metadata_tag,
             watermarked_file
         ]
         subprocess.run(cmd1, check=True)
 
+        # Strip metadata/chapters, copy streams
         cmd2 = [
-            "ffmpeg", "-i", watermarked_file,
-            "-map_metadata", "-1", "-map_chapters", "-1",
-            "-c:v", "copy", "-c:a", "copy",
-            "-metadata", metadata_tag,
+            'ffmpeg', '-i', watermarked_file,
+            '-map_metadata', '-1', '-map_chapters', '-1',
+            '-c:v', 'copy', '-c:a', 'copy',
+            '-metadata', metadata_tag,
             final_output
         ]
         subprocess.run(cmd2, check=True)
@@ -133,9 +109,9 @@ def process_video(brand):
     except Exception as e:
         return {"error": f"Unexpected error: {e}"}, 500
     finally:
-        for path in (input_file, watermarked_file):
+        for path in (input_file, watermarked_file, final_output):
             if os.path.exists(path):
                 os.remove(path)
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")))
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', '5000')))
