@@ -68,21 +68,21 @@ def process_video(brand):
             lines = [l.strip() for l in f if l.strip()]
         caption = random.choice(lines).replace("'", r"\'")
 
-        # build a properly‐chained filter_complex
+        # build a properly‐chained filter_complex using iw/ih
         fc = (
-            # 0: normalize to yuv420p
+            # normalize to yuv
             "[0:v]format=yuv420p[n0];"
             # top watermark
-            f"movie={wm_top}[wt];[n0][wt]overlay=x=(W-w)/2:y=10[n1];"
-            # caption box + text
-            "[n1]drawbox=x=0:y=70:w=W:h=50:color=black@0.6:t=fill[n2];"
+            f"movie={wm_top}[wt];[n0][wt]overlay=x=(iw-w)/2:y=10[n1];"
+            # caption box + fade‐out text
+            "[n1]drawbox=x=0:y=70:w=iw:h=50:color=black@0.6:t=fill[n2];"
             f"[n2]drawtext=text='{caption}':fontcolor=white:fontsize=24:"
-            "x=(W-text_w)/2:y=80:alpha='if(lt(t,3),1,1-(t-3))'[n3];"
+            "x=(iw-text_w)/2:y=80:alpha='if(lt(t,3),1,1-(t-3))'[n3];"
             # bottom static watermark
-            f"movie={wm_bot}[wb];[n3][wb]overlay=x=(W-w)/2:y=H-h-20[n4];"
+            f"movie={wm_bot}[wb];[n3][wb]overlay=x=(iw-w)/2:y=ih-h-20[n4];"
             # moving watermark
             f"movie={wm_mov}[wm];[n4][wm]overlay="
-              f"x='mod(t*{speed},W+w)-w':y=H-h-60[n5];"
+              f"x='mod(t*{speed},iw+w)-w':y=ih-h-60[n5];"
             # force even dims & label final
             "[n5]scale='trunc(iw/2)*2:trunc(ih/2)*2'[outv]"
         )
@@ -94,7 +94,7 @@ def process_video(brand):
             "-filter_complex", fc,
             "-map", "[outv]",
             "-map", "0:a?",                 # copy any audio
-            "-c:v", "libx264",              # H.264 encode
+            "-c:v", "libx264",              # H.264
             "-crf", "18",                   # sharper
             "-preset", "slow",
             "-profile:v", "high",
@@ -105,7 +105,7 @@ def process_video(brand):
         ]
         subprocess.run(cmd1, check=True)
 
-        # strip extra seals & finish
+        # finalize: strip any leftover data
         cmd2 = [
             "ffmpeg","-y",
             "-i", mid_tmp,
