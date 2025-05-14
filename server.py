@@ -1,3 +1,4 @@
+
 from flask import Flask, request, send_file
 import subprocess
 import uuid
@@ -65,9 +66,7 @@ def process_video(brand):
         lut_path = os.path.join(assets_path, config["lut"]) if config["lut"] else None
         caption_file = os.path.join(assets_path, config["captions_file"])
 
-        subprocess.run([
-            "wget", "--header=User-Agent: Mozilla/5.0", "-O", input_file, video_url
-        ], check=True)
+        subprocess.run(["wget", "--header=User-Agent: Mozilla/5.0", "-O", input_file, video_url], check=True)
 
         with open(caption_file, "r", encoding="utf-8") as f:
             captions = [line.strip() for line in f if line.strip()]
@@ -84,10 +83,11 @@ def process_video(brand):
         framerate = round(random.uniform(29.87, 30.1), 3)
         lut_filter = f"lut3d='{lut_path}'," if lut_path else ""
 
-        # Clean caption background (fade-in black bar)
-        caption_box = "drawbox=y=0:color=black@0.6:width=iw:height=90:t=fill:enable='between(t,0,4)',"
+        text_filters = (
+            "drawbox=x=0:y=60:width=iw:height=40:color=black@0.6:t=fill:enable='between(t,0,4)',"
+            f"drawtext=text='{selected_caption}':fontcolor=white:fontsize=28:x=(w-text_w)/2:y=70:enable='between(t,0,4)':alpha='if(lt(t,3),1,1-(t-3))'"
+        )
 
-        # Main filter stack
         filter_complex = (
             f"[1:v]split=3[wm_bounce][wm_static][wm_top];"
             f"[wm_bounce]scale=iw*{scale_bounce}:ih*{scale_bounce},format=rgba,colorchannelmixer=aa={opacity_bounce}[bounce_out];"
@@ -99,8 +99,7 @@ def process_video(brand):
             f"{lut_filter}"
             f"pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
             f"eq=brightness=0.01:contrast=1.02:saturation=1.03,"
-            f"{caption_box}"
-            f"drawtext=text='{selected_caption}':fontcolor=white:fontsize=28:x=(w-text_w)/2:y=80:enable='between(t,0,4)':alpha='if(lt(t,3),1,1-(t-3))'[base];"
+            f"{text_filters}[base];"
             f"[base][bounce_out]overlay=x='main_w-w-30+10*sin(t*3)':y='main_h-h-60+5*sin(t*2)'[step1];"
             f"[step1][static_out]overlay=x='(main_w-w)/2':y='main_h-h-10'[step2];"
             f"[step2][top_out]overlay=x='mod((t*{scroll_speed}),(main_w+w))-w':y=60,"
