@@ -59,29 +59,30 @@ def process_video(brand):
     speed      = cfg["scroll_speed"]
 
     try:
-        subprocess.run(["wget","-q","-O",in_tmp,url], check=True)
+        # 1) Download source
+        subprocess.run(["wget", "-q", "-O", in_tmp, url], check=True)
 
+        # 2) Pick a caption
         with open(caps_file, "r", encoding="utf-8") as f:
             lines = [l.strip() for l in f if l.strip()]
         caption = random.choice(lines).replace("'", r"\'")
 
-        # corrected filter_complex: use main_w/main_h in overlays
+        # 3) Build filter_complex with no shell‐style quotes
         fc = (
             "[0:v]format=yuv420p[n0];"
-            f"movie={wm_top}[wt];[n0][wt]overlay="
-              "x='(main_w-w)/2':y=10[n1];"
+            f"movie={wm_top}[wt];[n0][wt]overlay=x=(main_w-w)/2:y=10[n1];"
             "[n1]drawbox=x=0:y=70:w=iw:h=50:color=black@0.6:t=fill[n2];"
             f"[n2]drawtext=text='{caption}':fontcolor=white:fontsize=24:"
-              "x='(iw-text_w)/2':y=80:alpha='if(lt(t,3),1,1-(t-3))'[n3];"
-            f"movie={wm_bot}[wb];[n3][wb]overlay="
-              "x='(main_w-w)/2':y='main_h-h-20'[n4];"
+              "x=(iw-text_w)/2:y=80:alpha=if(lt(t,3),1,1-(t-3))[n3];"
+            f"movie={wm_bot}[wb];[n3][wb]overlay=x=(main_w-w)/2:y=(main_h-h-20)[n4];"
             f"movie={wm_mov}[wm];[n4][wm]overlay="
-              f"x='mod(t*{speed},main_w+w)-w':y='main_h-h-60'[n5];"
-            "[n5]scale='trunc(iw/2)*2:trunc(ih/2)*2'[outv]"
+              f"x=mod(t*{speed},main_w+w)-w:y=(main_h-h-60)[n5];"
+            "[n5]scale=trunc(iw/2)*2:trunc(ih/2)*2[outv]"
         )
 
+        # 4) First pass: high-quality H.264 + copy audio
         cmd1 = [
-            "ffmpeg","-y",
+            "ffmpeg", "-y",
             "-i", in_tmp,
             "-filter_complex", fc,
             "-map", "[outv]",
@@ -94,11 +95,12 @@ def process_video(brand):
         ]
         subprocess.run(cmd1, check=True)
 
+        # 5) Strip any extras and finalize
         cmd2 = [
-            "ffmpeg","-y",
+            "ffmpeg", "-y",
             "-i", mid_tmp,
-            "-map","0:v","-map","0:a?",
-            "-c","copy",
+            "-map", "0:v", "-map", "0:a?",
+            "-c", "copy",
             "-metadata", cfg["metadata"],
             out_tmp
         ]
@@ -115,4 +117,4 @@ def process_video(brand):
                 os.remove(f)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT",5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
