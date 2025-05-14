@@ -1,0 +1,29 @@
+thick_asian:
+  metadata: "brand=thick_asian"
+  lut: "Cobi_3.CUBE"
+  scroll_speed: 80
+  watermarks:
+    - "Thick_asian_watermark.png"
+    - "Thick_asian_watermark_2.png"
+    - "Thick_asian_watermark_3.png"
+  captions_file: "thick_asian_captions.txt"
+
+gym_baddie:
+  metadata: "brand=gym_baddie"
+  lut: "Cobi_3.CUBE"
+  scroll_speed: 120
+  watermarks:
+    - "gym_baddie_watermark.png"
+    - "gym_baddie_watermark_2.png"
+    - "gym_baddie_watermark_3.png"
+  captions_file: "gym_baddie_captions.txt"
+
+polishedform:
+  metadata: "brand=polishedform"
+  lut: null
+  scroll_speed: 80
+  watermarks:
+    - "polished_watermark.png"
+    - "polished_watermark_2.png"
+    - "polished_watermark_3.png"
+  captions_file: "polishedform_captions.txt"
