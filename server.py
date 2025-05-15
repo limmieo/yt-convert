@@ -51,31 +51,28 @@ def process_video(brand):
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
 
-    input_file       = f"/tmp/{uuid.uuid4()}.mp4"
+    input_file = f"/tmp/{uuid.uuid4()}.mp4"
     watermarked_file = f"/tmp/{uuid.uuid4()}_marked.mp4"
-    final_output     = f"/tmp/{uuid.uuid4()}_final.mp4"
+    final_output = f"/tmp/{uuid.uuid4()}_final.mp4"
 
     try:
-        cfg           = BRANDS[brand]
-        metadata_tag  = cfg["metadata"]
-        speed         = cfg["scroll_speed"]
-        assets_dir    = os.path.join(os.getcwd(), "assets")
-        wm            = os.path.join(assets_dir, random.choice(cfg["watermarks"]))
-        lut_path      = os.path.join(assets_dir, cfg["lut"]) if cfg["lut"] else None
+        cfg = BRANDS[brand]
+        metadata_tag = cfg["metadata"]
+        speed = cfg["scroll_speed"]
+        assets_dir = os.path.join(os.getcwd(), "assets")
+        wm = os.path.join(assets_dir, random.choice(cfg["watermarks"]))
+        lut_path = os.path.join(assets_dir, cfg["lut"]) if cfg["lut"] else None
         captions_file = os.path.join(assets_dir, cfg["captions_file"])
 
-        # download
         subprocess.run([
             "wget", "--header=User-Agent: Mozilla/5.0",
             "-O", input_file, video_url
         ], check=True)
 
-        # pick a caption
         with open(captions_file, "r", encoding="utf-8") as f:
             lines = [l.strip() for l in f if l.strip()]
         caption = random.choice(lines).replace("'", "\\'")
 
-        # dynamic watermark parameters
         ob = round(random.uniform(0.6, 0.7), 2)
         os_ = round(random.uniform(0.85, 0.95), 2)
         ot = round(random.uniform(0.4, 0.6), 2)
@@ -85,19 +82,17 @@ def process_video(brand):
         fr = round(random.uniform(29.87, 30.1), 3)
         lut_f = f"lut3d='{lut_path}'," if lut_path else ""
 
-        # centered caption bar + text
         CAP_H = 40
         caption_box = (
-            f"drawbox=x=0:y=(h-{CAP_H})/2:width=iw:height={CAP_H}:"
+            f"drawbox=x=0:y=h-{CAP_H}-60:width=iw:height={CAP_H}:"
             "color=black@0.6:t=fill:enable='between(t,0,4)',"
         )
         text_filter = (
             f"drawtext=text='{caption}':fontcolor=white:fontsize=28:"
-            "x=(w-text_w)/2:y=(h-text_h)/2:"
+            "x=(w-text_w)/2:y=h-text_h-60:"
             "enable='between(t,0,4)':alpha='if(lt(t,3),1,1-(t-3))'"
         )
 
-        # build filter_complex
         fc = (
             f"[1:v]split=3[wm_bounce][wm_static][wm_top];"
             f"[wm_bounce]scale=iw*{sb}:ih*{sb},format=rgba,"
@@ -120,7 +115,6 @@ def process_video(brand):
               "scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
-        # render with high quality
         cmd1 = [
             "ffmpeg", "-i", input_file,
             "-i", wm,
@@ -140,7 +134,6 @@ def process_video(brand):
         ]
         subprocess.run(cmd1, check=True)
 
-        # strip containers
         subprocess.run([
             "ffmpeg", "-i", watermarked_file,
             "-map_metadata", "-1", "-map_chapters", "-1",
@@ -161,4 +154,4 @@ def process_video(brand):
                 os.remove(p)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT",5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
