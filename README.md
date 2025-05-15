@@ -1,106 +1,168 @@
-# 🎞️ Faceless Video Branding Automation
+🎞️ Faceless Video Branding Automation
+This is a Flask-based backend for fully automating the processing, reformatting, and redistribution of short-form videos for content aggregation pages. It transforms ordinary reposts into brand-aligned, algorithm-resistant, and visually distinct content.
 
-This Flask app automates the transformation of reposted short-form videos into brand-aligned, original-feeling content — perfect for content aggregator pages like **Thick Asian Cosplay**, **Gym Baddie World**, and **PolishedForm**.
+Built for scale and speed, this system is designed to be used with tools like Make.com, Google Sheets, ChatGPT, and Dropbox for end-to-end video automation — from link intake to final upload.
 
-It applies subtle visual changes and overlays to:
-- Help bypass repost detection
-- Enhance engagement with dynamic captions
-- Deliver a consistent brand identity across multiple verticals
+✅ What It Does (Full Overview)
+✅ Downloads videos from URLs (via wget)
 
----
+✅ Processes videos using FFmpeg to apply:
 
-## ✨ Features
+Visual tweaks (crop, pad, flip, saturation, LUTs)
 
-✅ **Brand-Specific Configurations**  
-Each brand has its own:
-- Watermark pool (animated, blurred, or subtle)
-- LUT filters (optional color grading)
-- Caption tone and file
-- Visual motion style (e.g., scroll speed)
+Top caption overlays with black bars + bounce-in animation
 
-✅ **Top Caption Bar with Effects**  
-- Displays a caption from a rotating `.txt` file  
-- Caption + black background **fade out together**
-- Includes a smooth **bounce-in animation**
-- Supports **multi-line captions** using `\n`
+Multi-line caption support with fade-out timing
 
-✅ **Watermark Enhancements**
-- One animated watermark bounces around
-- One static watermark is blurred to mimic reaction-style content
-- One optional top watermark scrolls horizontally
+Up to 3 watermarks: animated, static blurred, and top-scrolling
 
-✅ **Repost Resistance Built-in**
-- Subtle transformations (flip, crop, pad, LUT, saturation)
-- Unique per-video watermark positioning and opacity
-- Mimics native app editing quirks (reaction/duet vibe)
+✅ Randomizes watermark position, opacity, and order
 
-✅ **Easy Expansion**  
-Add a new brand in seconds by updating the `BRANDS` dict:
-```python
-"new_brand": {
-    "metadata": "brand=new_brand",
-    "lut": "Optional_LUT.CUBE",
-    "scroll_speed": 100,
-    "watermarks": ["watermark1.png", "watermark2.png"],
-    "caption_file": "new_brand_captions.txt"
-}
-```
+✅ Reads captions from .txt file per brand
 
----
+✅ Mimics native in-app editing quirks (reaction-style overlays)
 
-## 📁 Folder Structure
+✅ Prevents repost detection using subtle obfuscation techniques
 
-```
+✅ Returns fully edited .mp4 for reposting
+
+✅ Modular brand system lets you manage multiple styles with one server
+
+✅ Integrates into automation tools to:
+
+Pull links from Google Sheets
+
+Track status (Pending → Posted)
+
+Store final video in Dropbox or Drive
+
+Auto-post to Instagram/Facebook using Graph API
+
+Generate captions or comments with ChatGPT
+
+🧠 Key Features
+🔄 Brand Profiles
+Each brand is defined with its own:
+
+Caption .txt file (rotates entries)
+
+Watermark folder (animated, static, blurred)
+
+Optional LUT (.CUBE format)
+
+Scroll speed for moving elements
+
+Metadata identifier
+
+🎬 Video Processing
+Adds top caption bar from rotating file
+
+Caption + black bar fade out after intro
+
+Bounce-in caption entrance
+
+Supports multiline (\n) captions
+
+1 watermark bounces around screen
+
+1 static blurred watermark to mimic reactions
+
+1 optional top-scrolling watermark
+
+Subtle visual edits (flip, crop, LUT, saturation) per video
+
+Randomized effects to avoid pattern detection
+
+Ensures every video looks slightly different, even if reposted
+
+⚙️ Full Automation Support
+Can be triggered and connected to:
+
+Google Sheets — paste video links + track status
+
+Make.com / Zapier — orchestrate the full pipeline
+
+ChatGPT — generate captions/comments dynamically
+
+Dropbox or Google Drive — auto-save processed videos
+
+Instagram Graph API — auto-upload + add first comment
+
+📁 Folder Structure
+bash
+Copy
+Edit
 project/
-├── app.py                   # Flask API logic
+├── app.py                      # Flask server
 ├── assets/
-│   ├── thick_asian_captions.txt
-│   ├── gym_baddie_captions.txt
-│   ├── polishedform_captions.txt
-│   ├── Thick_asian_watermark.png
-│   ├── gym_baddie_watermark.png
-│   ├── Cobi_3.CUBE
+│   ├── captions_brand1.txt     # Caption bank (rotated)
+│   ├── watermark1.png          # Watermark files
+│   ├── watermark2.png
+│   ├── LUT.CUBE                # Optional color filter
 │   └── ...
-```
-
----
-
-## 🚀 Usage
-
-**1. Run the server locally:**
-```bash
-python app.py
-```
-
-**2. POST a request to:**
-```
-http://localhost:5000/process/<brand>
-```
-
-**With JSON body:**
-```json
-{
-  "video_url": "https://your-video-url.mp4"
+🧪 Example Brand Config
+python
+Copy
+Edit
+"example_brand": {
+    "metadata": "brand=example_brand",
+    "lut": "LUT_file.CUBE",
+    "scroll_speed": 100,
+    "watermarks": ["wm1.png", "wm2.png", "wm3.png"],
+    "captions_file": "example_brand_captions.txt"
 }
-```
+🚀 How to Use (Manually or via API)
+1. Run the Server
+bash
+Copy
+Edit
+python app.py
+2. POST a Request
+bash
+Copy
+Edit
+http://localhost:5000/process/<brand>
+JSON body:
 
-**3. Output:**
-Returns the fully processed `.mp4` with all overlays and edits applied.
+json
+Copy
+Edit
+{
+  "video_url": "https://example.com/your-video.mp4"
+}
+3. Output:
+Returns a processed .mp4 file with all transformations applied, ready for upload.
 
----
+🛠️ Requirements
+Python 3.8+
 
-## 🛠️ Requirements
+ffmpeg (must be installed + available in PATH)
 
-- Python 3.8+
-- FFmpeg (must be installed and available in PATH)
-- `wget` (for video download)
-- `flask`
+wget
 
----
+flask
 
-## 💡 Example Brands
-| Brand         | Caption Style         | Aesthetic               |
-|---------------|------------------------|--------------------------|
-| Thick Asian   | Flirty, playful, online baddie  | Cosplay, anime-inspired |
-| Gym Baddie    | Confident, gym-glam energy      | Fitness & fashion       |
-| PolishedForm  | Elevated, minimal, masculine    | Fashion-forward, clean  |
+Works on local or cloud (e.g. Render, RunPod)
+
+🔗 Automation Flow (Make.com)
+Trigger: Watch new row in Google Sheet
+
+Download: Send video_url to Flask /process/<brand> endpoint
+
+Store: Upload processed .mp4 to Dropbox/Drive
+
+Generate: Use ChatGPT to create caption or comment
+
+Upload: Post video to Instagram or Facebook
+
+Update: Change status in Google Sheet to Posted
+
+🧠 Pro Tips
+Use a separate .txt file for each brand’s captions
+
+Caption bar supports emojis and line breaks
+
+Adjust watermark opacity and duration inside the FFmpeg config
+
+Auto-scale by deploying Flask on a Render or RunPod instance
+
