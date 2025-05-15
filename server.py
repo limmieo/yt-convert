@@ -132,7 +132,7 @@ def process_video(brand):
             "-map_metadata","-1","-map_chapters","-1",
             "-r",str(fr),
             "-g","48","-keyint_min","24","-sc_threshold","0",
-            "-crf","0","-preset","placebo","-profile:v","high",
+            "-crf", "0", "-preset", "placebo",
             "-t","40",
             "-c:v","libx264","-c:a","copy",
             "-metadata",metadata_tag,
