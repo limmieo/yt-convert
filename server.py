@@ -82,16 +82,16 @@ def process_video(brand):
         fr = round(random.uniform(29.87, 30.1), 3)
         lut_f = f"lut3d='{lut_path}'," if lut_path else ""
 
-        # Centered black bar + centered white text
+        # Caption + background drawn together
         CAP_H = 40
-        caption_box = (
+        caption_draw = (
             f"drawbox=x=0:y=(h-{CAP_H})/2:width=iw:height={CAP_H}:"
-            "color=black@0.6:t=fill:enable='between(t,0,4)',"
-        )
-        text_filter = (
-            f"drawtext=text='{caption}':fontcolor=white:fontsize=28:"
+            "color=black@0.6:t=fill:enable='between(t,0,4)'[boxed];"
+            f"[boxed]drawtext=text='{caption}':"
+            "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
+            "fontcolor=white:fontsize=28:"
             "x=(w-text_w)/2:y=(h-text_h)/2:"
-            "enable='between(t,0,4)':alpha='if(lt(t,3),1,1-(t-3))'"
+            "enable='between(t,0,4)':alpha='if(lt(t,3),1,1-(t-3))'[base];"
         )
 
         fc = (
@@ -104,8 +104,8 @@ def process_video(brand):
               "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
               f"{lut_f}"
               "pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
-              "eq=brightness=0.01:contrast=1.02:saturation=1.03,"
-            f"{caption_box}{text_filter}[base];"
+              "eq=brightness=0.01:contrast=1.02:saturation=1.03[pre];"
+            f"[pre]{caption_draw}"
             f"[base][bounce]overlay=x='main_w-w-30+10*sin(t*3)':y='main_h-h-60+5*sin(t*2)'[s1];"
             f"[s1][static]overlay=x='(main_w-w)/2':y='main_h-h-10'[s2];"
             f"[s2][top]overlay=x='mod(t*{speed},main_w+w)-w':y=60,"
