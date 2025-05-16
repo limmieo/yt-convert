@@ -11,7 +11,6 @@ BRANDS = {
     "thick_asian": {
         "metadata": "brand=thick_asian",
         "lut": "Cobi_3.CUBE",
-        "scroll_speed": 80,
         "watermarks": [
             "Thick_asian_watermark.png",
             "Thick_asian_watermark_2.png",
@@ -22,7 +21,6 @@ BRANDS = {
     "gym_baddie": {
         "metadata": "brand=gym_baddie",
         "lut": "Cobi_3.CUBE",
-        "scroll_speed": 120,
         "watermarks": [
             "gym_baddie_watermark.png",
             "gym_baddie_watermark_2.png",
@@ -33,7 +31,6 @@ BRANDS = {
     "polishedform": {
         "metadata": "brand=polishedform",
         "lut": None,
-        "scroll_speed": 80,
         "watermarks": [
             "polished_watermark.png",
             "polished_watermark_2.png",
@@ -58,75 +55,70 @@ def process_video(brand):
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
 
-    in_mp4 = f"/tmp/{uuid.uuid4()}.mp4"
+    in_mp4  = f"/tmp/{uuid.uuid4()}.mp4"
     mid_mp4 = f"/tmp/{uuid.uuid4()}_mid.mp4"
     out_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
 
     try:
-        cfg = BRANDS[brand]
+        cfg      = BRANDS[brand]
         metadata = cfg["metadata"]
-        assets = os.path.join(os.getcwd(), "assets")
-
-        wm_file = os.path.join(assets, random.choice(cfg["watermarks"]))
+        assets   = os.path.join(os.getcwd(), "assets")
+        wm_file  = os.path.join(assets, random.choice(cfg["watermarks"]))
         lut_file = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
         captions = os.path.join(assets, cfg["captions_file"])
 
+        # Download
         subprocess.run([
             "wget", "-q", "--header=User-Agent: Mozilla/5.0",
             "-O", in_mp4, video_url
         ], check=True)
 
+        # Pick & wrap a caption
         with open(captions, encoding="utf-8") as f:
             lines = [l.strip() for l in f if l.strip()]
-        raw = random.choice(lines)
-        wrapped = wrap_caption(raw)
+        wrapped = wrap_caption(random.choice(lines))
 
-        ob = round(random.uniform(0.6, 0.7), 2)
+        # Random watermark parameters
+        ob  = round(random.uniform(0.6, 0.7), 2)
         os_ = round(random.uniform(0.85, 0.95), 2)
-        ot = round(random.uniform(0.4, 0.6), 2)
-        sb = random.uniform(0.85, 1.0)
-        ss = random.uniform(1.1, 1.25)
-        st = random.uniform(0.9, 1.1)
-        fr = round(random.uniform(29.87, 30.1), 3)
+        ot  = round(random.uniform(0.4, 0.6), 2)
+        sb  = random.uniform(0.85, 1.0)
+        ss  = random.uniform(1.1, 1.25)
+        st  = random.uniform(0.9, 1.1)
+        fr  = round(random.uniform(29.87, 30.1), 3)
 
         lut_filter = f"lut3d='{lut_file}'," if lut_file else ""
 
-        # ─── FIXED filter_complex ─────────────────────────────────────────────────
+        # Single-line, clean filter_complex
         fc = (
-            f"[1:v]split=3[wb][ws][wt];"
+            "[1:v]split=3[wb][ws][wt];"
             f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,"
-              f"colorchannelmixer=aa={ob}[bounce];"
+            f"colorchannelmixer=aa={ob}[bounce];"
             f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,"
-              f"colorchannelmixer=aa={os_}[static];"
+            f"colorchannelmixer=aa={os_}[static];"
             f"[wt]scale=iw*{st}:ih*{st},format=rgba,"
-              f"colorchannelmixer=aa={ot}[top];"
-
-            f"[0:v]hflip, setpts=PTS+0.001/TB, "
-              "scale=iw*0.98:ih*0.98, "
-              "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2, "
-              f"{lut_filter}"
-              "pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2, "
-              "eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
-
-            # bounce watermark (bottom-right)
+            f"colorchannelmixer=aa={ot}[top];"
+            "[0:v]hflip,setpts=PTS+0.001/TB,"
+            "scale=iw*0.98:ih*0.98,"
+            "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
+            f"{lut_filter}"
+            "pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
+            "eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
             "[base][bounce]overlay=x=main_w-w-40:y=main_h-h-80[b1];"
-            # static watermark (center-bottom)
             "[b1][static]overlay=x=(main_w-w)/2:y=main_h-h-20[b2];"
-            # top watermark (static, upper-right)
             "[b2][top]overlay=x=main_w-w-50:y=60[b3];"
-
-            # draw caption box + text on top
             "[b3]drawtext="
-              "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
-              f"text='{wrapped}':"
-              "fontcolor=white:fontsize=28:"
-              "box=1:boxcolor=black@0.6:boxborderw=10:"
-              "x=(w-text_w)/2:y=h*0.45:"
-              "enable='between(t,0,4)':"
-              "alpha='if(lt(t,3),1,1-(t-3))'"
-              "[final]"
+            "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
+            f"text='{wrapped}':"
+            "fontcolor=white:fontsize=28:"
+            "box=1:boxcolor=black@0.6:boxborderw=10:"
+            "x=(w-text_w)/2:y=h*0.45:"
+            "enable='between(t,0,4)':"
+            "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
+            "[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
+        # First pass: encode video & copy audio
         cmd = [
             "ffmpeg", "-y",
             "-i", in_mp4,
@@ -146,6 +138,7 @@ def process_video(brand):
         ]
         subprocess.run(cmd, check=True)
 
+        # Strip metadata & chapters
         subprocess.run([
             "ffmpeg", "-y",
             "-i", mid_mp4,
@@ -164,8 +157,8 @@ def process_video(brand):
     except Exception as e:
         return {"error": f"Unexpected error: {e}"}, 500
     finally:
-        for p in (in_mp4, mid_mp4):
-            try: os.remove(p)
+        for path in (in_mp4, mid_mp4):
+            try: os.remove(path)
             except: pass
 
 if __name__ == "__main__":
