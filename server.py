@@ -82,25 +82,23 @@ def process_video(brand):
         fr = round(random.uniform(29.87, 30.1), 3)
         lut_f = f"lut3d='{lut_path}'," if lut_path else ""
 
+        # Centered black bar + centered white text
         CAP_H = 40
         caption_box = (
-            f"drawbox=x=0:y=h-{CAP_H}-60:width=iw:height={CAP_H}:"
+            f"drawbox=x=0:y=(h-{CAP_H})/2:width=iw:height={CAP_H}:"
             "color=black@0.6:t=fill:enable='between(t,0,4)',"
         )
         text_filter = (
             f"drawtext=text='{caption}':fontcolor=white:fontsize=28:"
-            "x=(w-text_w)/2:y=h-text_h-60:"
+            "x=(w-text_w)/2:y=(h-text_h)/2:"
             "enable='between(t,0,4)':alpha='if(lt(t,3),1,1-(t-3))'"
         )
 
         fc = (
             f"[1:v]split=3[wm_bounce][wm_static][wm_top];"
-            f"[wm_bounce]scale=iw*{sb}:ih*{sb},format=rgba,"
-              f"colorchannelmixer=aa={ob}[bounce];"
-            f"[wm_static]scale=iw*{ss}:ih*{ss},format=rgba,"
-              f"colorchannelmixer=aa={os_}[static];"
-            f"[wm_top]scale=iw*{st}:ih*{st},format=rgba,"
-              f"colorchannelmixer=aa={ot}[top];"
+            f"[wm_bounce]scale=iw*{sb}:ih*{sb},format=rgba,colorchannelmixer=aa={ob}[bounce];"
+            f"[wm_static]scale=iw*{ss}:ih*{ss},format=rgba,colorchannelmixer=aa={os_}[static];"
+            f"[wm_top]scale=iw*{st}:ih*{st},format=rgba,colorchannelmixer=aa={ot}[top];"
             f"[0:v]hflip,setpts=PTS+0.001/TB,"
               "scale=iw*0.98:ih*0.98,"
               "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
@@ -108,8 +106,7 @@ def process_video(brand):
               "pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
               "eq=brightness=0.01:contrast=1.02:saturation=1.03,"
             f"{caption_box}{text_filter}[base];"
-            f"[base][bounce]overlay=x='main_w-w-30+10*sin(t*3)':"
-              "y='main_h-h-60+5*sin(t*2)'[s1];"
+            f"[base][bounce]overlay=x='main_w-w-30+10*sin(t*3)':y='main_h-h-60+5*sin(t*2)'[s1];"
             f"[s1][static]overlay=x='(main_w-w)/2':y='main_h-h-10'[s2];"
             f"[s2][top]overlay=x='mod(t*{speed},main_w+w)-w':y=60,"
               "scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
