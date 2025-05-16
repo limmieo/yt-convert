@@ -2,7 +2,7 @@ import os
 import uuid
 import threading
 import time
-import json
+import subprocess
 from flask import (
     Flask, render_template, request,
     redirect, url_for, flash, jsonify,
@@ -55,17 +55,29 @@ _results = {}    # task_id -> output filename
 
 def _simulate_processing(task_id, video_url, brand):
     """
-    Replace this stub with your real ffmpeg pipeline.
-    Here we just sleep & update progress.
+    Demo stub: sleeps & updates progress, but
+    actually downloads the source URL into
+    processed/<task_id>.mp4 so the file is non-empty.
     """
     for i in range(101):
         _progress[task_id] = i
         time.sleep(0.05)
 
-    # when “done” create an empty file so download works
     outname = f"{task_id}.mp4"
-    open(os.path.join("processed", outname), "wb").close()
+    outpath = os.path.join("processed", outname)
+
+    # Try to fetch the real video; fallback to empty file on error
+    try:
+        subprocess.run([
+            "wget", "-q", "--header=User-Agent:Mozilla/5.0",
+            "-O", outpath, video_url
+        ], check=True)
+    except subprocess.CalledProcessError:
+        # fallback so download link still works
+        open(outpath, "wb").close()
+
     _results[task_id] = outname
+    _progress[task_id] = 100
 
 
 @app.route("/", methods=["GET"])
