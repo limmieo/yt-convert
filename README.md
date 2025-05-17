@@ -1,4 +1,4 @@
-# 🚀 FACILESS VIDEO BRANDING AUTOMATION
+# 🚀 FACELESS VIDEO BRANDING AUTOMATION
 
 **A Flask-based backend to automatically turn short-form reposts into unique, brand-consistent, repost-resistant content.**  
 Perfect for IG Reels, TikTok, and Facebook automation at scale.
