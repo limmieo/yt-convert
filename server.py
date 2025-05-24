@@ -91,7 +91,6 @@ def process_video(brand):
 
         lut_filter = f"lut3d='{lut_file}'," if lut_file else ""
 
-        # ─── FIXED filter_complex ─────────────────────────────────────────────────
         fc = (
             f"[1:v]split=3[wb][ws][wt];"
             f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,"
@@ -108,14 +107,9 @@ def process_video(brand):
               "pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2, "
               "eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
 
-            # bounce watermark (bottom-right)
             "[base][bounce]overlay=x=main_w-w-40:y=main_h-h-80[b1];"
-            # static watermark (center-bottom)
             "[b1][static]overlay=x=(main_w-w)/2:y=main_h-h-20[b2];"
-            # top watermark (static, upper-right)
             "[b2][top]overlay=x=main_w-w-50:y=60[b3];"
-
-            # draw caption box + text on top
             "[b3]drawtext="
               "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
               f"text='{wrapped}':"
@@ -123,8 +117,8 @@ def process_video(brand):
               "box=1:boxcolor=black@0.6:boxborderw=10:"
               "x=(w-text_w)/2:y=h*0.45:"
               "enable='between(t,0,4)':"
-              "alpha='if(lt(t,3),1,1-(t-3))'"
-              "[final]"
+              "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
+            "[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
         cmd = [
