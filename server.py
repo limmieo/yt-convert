@@ -94,6 +94,7 @@ def process_video(brand):
 
         lut_filter = f"lut3d='{lut_file}'," if lut_file else ""
 
+        # FULL filter_complex, ends with scale to even resolution
         fc = (
             f"[1:v]split=3[wb][ws][wt];"
             f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,colorchannelmixer=aa={ob}[bounce];"
@@ -115,7 +116,8 @@ def process_video(brand):
             "box=1:boxcolor=black@0.6:boxborderw=10:"
             "x=(w-text_w)/2:y=h*0.45:"
             "enable='between(t,0,4)':"
-            "alpha='if(lt(t,3),1,1-(t-3))'[final]"
+            "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
+            "[captioned]scale=ceil(iw/2)*2:ceil(ih/2)*2[final]"
         )
 
         cmd = [
