@@ -49,8 +49,8 @@ def wrap_caption(caption, width=30):
         lines = [" ".join(lines[:-1]), lines[-1]]
     return "\\n".join(lines)
 
-def escape_ffmpeg_text(s):
-    return s.replace('\\', '\\\\').replace(':', '\\:').replace("'", "\\'")
+def escape_ffmpeg_text(text):
+    return text.replace('\\', '\\\\').replace(':', '\\:').replace("'", "\\'")
 
 @app.route('/process/<brand>', methods=['POST'])
 def process_video(brand):
@@ -61,7 +61,7 @@ def process_video(brand):
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
 
-    in_mp4 = f"/tmp/{uuid.uuid4()}.mp4"
+    in_mp4  = f"/tmp/{uuid.uuid4()}.mp4"
     mid_mp4 = f"/tmp/{uuid.uuid4()}_mid.mp4"
     out_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
 
@@ -69,7 +69,6 @@ def process_video(brand):
         cfg = BRANDS[brand]
         metadata = cfg["metadata"]
         assets = os.path.join(os.getcwd(), "assets")
-
         wm_file = os.path.join(assets, random.choice(cfg["watermarks"]))
         lut_file = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
         captions = os.path.join(assets, cfg["captions_file"])
@@ -94,7 +93,6 @@ def process_video(brand):
 
         lut_filter = f"lut3d='{lut_file}'," if lut_file else ""
 
-        # FULL filter_complex, ends with scale to even resolution
         fc = (
             f"[1:v]split=3[wb][ws][wt];"
             f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,colorchannelmixer=aa={ob}[bounce];"
@@ -120,7 +118,7 @@ def process_video(brand):
             "[captioned]scale=ceil(iw/2)*2:ceil(ih/2)*2[final]"
         )
 
-        cmd = [
+        subprocess.run([
             "ffmpeg", "-y",
             "-i", in_mp4,
             "-i", wm_file,
@@ -136,8 +134,7 @@ def process_video(brand):
             "-c:a", "copy",
             "-metadata", metadata,
             mid_mp4
-        ]
-        subprocess.run(cmd, check=True)
+        ], check=True)
 
         subprocess.run([
             "ffmpeg", "-y",
