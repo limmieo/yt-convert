@@ -101,16 +101,16 @@ def process_video(brand):
             "[b2][top]overlay=x=main_w-w-50:y=60[b3];"
             "[b3]drawtext="
             "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
-            f"text='{wrapped}':"
+            f"text=\"{wrapped}\":"  # Escaped properly
             "fontcolor=white:fontsize=28:"
             "box=1:boxcolor=black@0.6:boxborderw=10:"
             "x=(w-text_w)/2:y=h*0.45:"
             "enable='between(t,0,4)':"
             "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
-            "[captioned]scale='if(gte(mod(iw,2),1),iw-1,iw):if(gte(mod(ih,2),1),ih-1,ih)'[final]"
+            "[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
-        subprocess.run([
+        result = subprocess.run([
             "ffmpeg", "-y",
             "-i", in_mp4,
             "-i", wm_file,
@@ -126,9 +126,12 @@ def process_video(brand):
             "-c:a", "copy",
             "-metadata", metadata,
             mid_mp4
-        ], check=True)
+        ], stderr=subprocess.PIPE, text=True)
 
-        subprocess.run([
+        if result.returncode != 0:
+            raise RuntimeError(f"FFmpeg encoding failed:\n{result.stderr}")
+
+        result2 = subprocess.run([
             "ffmpeg", "-y",
             "-i", mid_mp4,
             "-map_metadata", "-1",
@@ -137,18 +140,23 @@ def process_video(brand):
             "-c:a", "copy",
             "-metadata", metadata,
             out_mp4
-        ], check=True)
+        ], stderr=subprocess.PIPE, text=True)
+
+        if result2.returncode != 0:
+            raise RuntimeError(f"FFmpeg final pass failed:\n{result2.stderr}")
 
         return send_file(out_mp4, as_attachment=True)
 
     except subprocess.CalledProcessError as e:
         return {"error": f"FFmpeg failed: {e}"}, 500
     except Exception as e:
-        return {"error": f"Unexpected error: {e}"}, 500
+        return {"error": f"Unexpected error: {str(e)}"}, 500
     finally:
         for path in (in_mp4, mid_mp4):
-            try: os.remove(path)
-            except: pass
+            try:
+                os.remove(path)
+            except:
+                pass
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
