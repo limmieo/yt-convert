@@ -79,7 +79,7 @@ def process_video(brand):
         with open(captions, encoding="utf-8") as f:
             lines = [l.strip() for l in f if l.strip()]
         raw = random.choice(lines)
-        wrapped = wrap_caption(raw)
+        wrapped = wrap_caption(raw).replace("'", "\\'").replace('"', "")
 
         ob = round(random.uniform(0.6, 0.7), 2)
         os_ = round(random.uniform(0.85, 0.95), 2)
@@ -113,7 +113,7 @@ def process_video(brand):
             "x=(w-text_w)/2:y=h*0.45:"
             "enable='between(t,0,4)':"
             "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
-            "[captioned]scale='if(mod(iw,2),iw+1,iw):if(mod(ih,2),ih+1,ih)'[final]"
+            "[captioned]scale=ceil(iw/2)*2:ceil(ih/2)*2[final]"
         )
 
         subprocess.run([
@@ -153,10 +153,8 @@ def process_video(brand):
         return {"error": f"Unexpected error: {e}"}, 500
     finally:
         for p in (in_mp4, mid_mp4):
-            try:
-                os.remove(p)
-            except:
-                pass
+            try: os.remove(p)
+            except: pass
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
