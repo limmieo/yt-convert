@@ -67,18 +67,15 @@ def process_video(brand):
         lut_file = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
         captions = os.path.join(assets, cfg["captions_file"])
 
-        # Download
         subprocess.run([
             "wget", "-q", "--header=User-Agent: Mozilla/5.0",
             "-O", in_mp4, video_url
         ], check=True)
 
-        # Pick & wrap a caption
         with open(captions, encoding="utf-8") as f:
             lines = [l.strip() for l in f if l.strip()]
         wrapped = wrap_caption(random.choice(lines))
 
-        # Random watermark parameters
         ob  = round(random.uniform(0.6, 0.7), 2)
         os_ = round(random.uniform(0.85, 0.95), 2)
         ot  = round(random.uniform(0.4, 0.6), 2)
@@ -89,15 +86,11 @@ def process_video(brand):
 
         lut_filter = f"lut3d='{lut_file}'," if lut_file else ""
 
-        # Single-line, clean filter_complex
         fc = (
             "[1:v]split=3[wb][ws][wt];"
-            f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,"
-            f"colorchannelmixer=aa={ob}[bounce];"
-            f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,"
-            f"colorchannelmixer=aa={os_}[static];"
-            f"[wt]scale=iw*{st}:ih*{st},format=rgba,"
-            f"colorchannelmixer=aa={ot}[top];"
+            f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,colorchannelmixer=aa={ob}[bounce];"
+            f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,colorchannelmixer=aa={os_}[static];"
+            f"[wt]scale=iw*{st}:ih*{st},format=rgba,colorchannelmixer=aa={ot}[top];"
             "[0:v]hflip,setpts=PTS+0.001/TB,"
             "scale=iw*0.98:ih*0.98,"
             "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
@@ -115,11 +108,10 @@ def process_video(brand):
             "x=(w-text_w)/2:y=h*0.45:"
             "enable='between(t,0,4)':"
             "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
-            "[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
+            "[captioned]scale='ceil(iw/2)*2:ceil(ih/2)*2'[final]"
         )
 
-        # First pass: encode video & copy audio
-        cmd = [
+        result = subprocess.run([
             "ffmpeg", "-y",
             "-i", in_mp4,
             "-i", wm_file,
@@ -135,10 +127,11 @@ def process_video(brand):
             "-c:a", "copy",
             "-metadata", metadata,
             mid_mp4
-        ]
-        subprocess.run(cmd, check=True)
+        ], stderr=subprocess.PIPE, text=True)
 
-        # Strip metadata & chapters
+        if result.returncode != 0:
+            return {"error": "FFmpeg failed", "details": result.stderr}, 500
+
         subprocess.run([
             "ffmpeg", "-y",
             "-i", mid_mp4,
