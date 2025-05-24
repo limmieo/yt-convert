@@ -44,7 +44,7 @@ def wrap_caption(caption, width=30):
     lines = textwrap.wrap(caption, width)
     if len(lines) > 2:
         lines = [" ".join(lines[:-1]), lines[-1]]
-    return "\\n".join(lines)
+    return "\\n".join(lines).replace(":", "\\:")
 
 @app.route('/process/<brand>', methods=['POST'])
 def process_video(brand):
@@ -101,7 +101,7 @@ def process_video(brand):
             "[b2][top]overlay=x=main_w-w-50:y=60[b3];"
             "[b3]drawtext="
             "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
-            f"text=\"{wrapped}\":"  # Escaped properly
+            f"text='{wrapped}':"
             "fontcolor=white:fontsize=28:"
             "box=1:boxcolor=black@0.6:boxborderw=10:"
             "x=(w-text_w)/2:y=h*0.45:"
@@ -110,7 +110,7 @@ def process_video(brand):
             "[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
-        result = subprocess.run([
+        encode = subprocess.run([
             "ffmpeg", "-y",
             "-i", in_mp4,
             "-i", wm_file,
@@ -128,10 +128,10 @@ def process_video(brand):
             mid_mp4
         ], stderr=subprocess.PIPE, text=True)
 
-        if result.returncode != 0:
-            raise RuntimeError(f"FFmpeg encoding failed:\n{result.stderr}")
+        if encode.returncode != 0:
+            raise RuntimeError(encode.stderr)
 
-        result2 = subprocess.run([
+        final = subprocess.run([
             "ffmpeg", "-y",
             "-i", mid_mp4,
             "-map_metadata", "-1",
@@ -142,21 +142,17 @@ def process_video(brand):
             out_mp4
         ], stderr=subprocess.PIPE, text=True)
 
-        if result2.returncode != 0:
-            raise RuntimeError(f"FFmpeg final pass failed:\n{result2.stderr}")
+        if final.returncode != 0:
+            raise RuntimeError(final.stderr)
 
         return send_file(out_mp4, as_attachment=True)
 
-    except subprocess.CalledProcessError as e:
-        return {"error": f"FFmpeg failed: {e}"}, 500
     except Exception as e:
-        return {"error": f"Unexpected error: {str(e)}"}, 500
+        return {"error": str(e)}, 500
     finally:
-        for path in (in_mp4, mid_mp4):
-            try:
-                os.remove(path)
-            except:
-                pass
+        for f in [in_mp4, mid_mp4]:
+            try: os.remove(f)
+            except: pass
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
