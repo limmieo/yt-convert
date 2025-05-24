@@ -96,16 +96,18 @@ def process_video(brand):
             f"{lut_filter}"
             "pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
             "eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
-            "color=color=black@0.0:size=720x1280:d=5[blank];"
-            "[blank]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
-            f"text='{wrapped}':fontcolor=white:fontsize=28:"
-            "box=1:boxcolor=black@0.6:boxborderw=10:"
-            "x=(w-text_w)/2:y=h*0.45,"
-            "fade=t=out:st=3:d=1[text_layer];"
             "[base][bounce]overlay=x=main_w-w-40:y=main_h-h-80[b1];"
             "[b1][static]overlay=x=(main_w-w)/2:y=main_h-h-20[b2];"
             "[b2][top]overlay=x=main_w-w-50:y=60[b3];"
-            "[b3][text_layer]overlay=format=auto[final]"
+            "[b3]drawtext="
+            "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
+            f"text='{wrapped}':"
+            "fontcolor=white:fontsize=28:"
+            "box=1:boxcolor=black@0.6:boxborderw=10:"
+            "x=(w-text_w)/2:y=h*0.45:"
+            "enable='between(t,0,4)':"
+            "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
+            "[captioned]scale=ceil(iw/2)*2:ceil(ih/2)*2[final]"
         )
 
         subprocess.run([
@@ -145,8 +147,10 @@ def process_video(brand):
         return {"error": f"Unexpected error: {e}"}, 500
     finally:
         for path in (in_mp4, mid_mp4):
-            try: os.remove(path)
-            except: pass
+            try:
+                os.remove(path)
+            except:
+                pass
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
