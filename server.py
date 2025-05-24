@@ -12,97 +12,87 @@ def process_video():
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
 
-    # prepare temp paths
+    # Temp file paths
     input_file       = f"/tmp/{uuid.uuid4()}.mp4"
     watermarked_file = f"/tmp/{uuid.uuid4()}_marked.mp4"
     final_output     = f"/tmp/{uuid.uuid4()}_final.mp4"
-
-    metadata_tag = "brand=thick_asian"
+    metadata_tag     = "brand=thick_asian"
 
     try:
-        # assets folder
-        assets_path = os.path.join(os.getcwd(), "assets")
-        watermark_choice = os.path.join(assets_path, random.choice([
-            "watermark.png",
-            "watermark_2.png",
-            "watermark_3.png"
-        ]))
+        # Assets
+        assets_path     = os.path.join(os.getcwd(), "assets")
+        watermark_choice = os.path.join(
+            assets_path,
+            random.choice(["watermark.png", "watermark_2.png", "watermark_3.png"])
+        )
         lut_path = os.path.join(assets_path, "Cobi_3.CUBE")
 
-        # download source
+        # Download source
         subprocess.run([
             "wget", "--header=User-Agent: Mozilla/5.0",
             "-O", input_file, video_url
         ], check=True)
 
-        # dynamic visual params
-        opacity_bounce     = round(random.uniform(0.6, 0.7), 2)
-        opacity_static     = round(random.uniform(0.85, 0.95), 2)
-        opacity_topleft    = round(random.uniform(0.4, 0.6), 2)
-        scale_bounce       = random.uniform(0.83, 1.0)
-        scale_static       = random.uniform(1.05, 1.2)
-        scale_topleft      = random.uniform(0.6, 0.75)
-        framerate          = round(random.uniform(29.87, 30.1), 3)
+        # Randomized visual params
+        opacity_bounce  = round(random.uniform(0.6, 0.7), 2)
+        opacity_static  = round(random.uniform(0.85, 0.95), 2)
+        opacity_topleft = round(random.uniform(0.4, 0.6), 2)
+        scale_bounce    = random.uniform(0.83, 1.0)
+        scale_static    = random.uniform(1.05, 1.2)
+        scale_topleft   = random.uniform(0.6, 0.75)
+        framerate       = round(random.uniform(29.87, 30.1), 3)
 
-        # build ffmpeg command
+        # FFmpeg filter chain
         command = [
-            "ffmpeg",
-            "-i", input_file,
-            "-i", watermark_choice,
+            "ffmpeg", "-i", input_file, "-i", watermark_choice,
             "-filter_complex",
-            # split out the three watermark streams
+            # split watermark into three streams
             f"[1:v]split=3[wm_bounce][wm_static][wm_top];"
-            # bounce watermark → static top-right
+            # bounce watermark (now static bottom-right)
             f"[wm_bounce]scale=iw*{scale_bounce}:ih*{scale_bounce},"
             f"format=rgba,colorchannelmixer=aa={opacity_bounce}[bounce_out];"
-            # static watermark → center bottom (lowered)
+            # static watermark (centered, lower)
             f"[wm_static]scale=iw*{scale_static}:ih*{scale_static},"
             f"format=rgba,colorchannelmixer=aa={opacity_static}[static_out];"
-            # top-left little watermark
+            # top watermark (small corner)
             f"[wm_top]scale=iw*{scale_topleft}:ih*{scale_topleft},"
             f"format=rgba,colorchannelmixer=aa={opacity_topleft}[top_out];"
-            # base video: flip, slight scale, crop, LUT, pad, color tweak
+            # main video processing
             f"[0:v]hflip,setpts=PTS+0.001/TB,"
             f"scale=iw*0.98:ih*0.98,"
             f"crop=iw-6:ih-6:(random(1)*6):(random(1)*6),"
             f"lut3d='{lut_path}',"
             f"pad=iw+4:ih+4:(ow-iw)/2:(oh-ih)/2,"
             f"eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
-            # overlay bounce static at top-right
-            f"[base][bounce_out]overlay=x=main_w-w-30:y=20[step1];"
-            # overlay static watermark center bottom lower
-            f"[step1][static_out]overlay=x=(main_w-w)/2:y=main_h-h-10[step2];"
-            # overlay top-left watermark, then force even dims
-            f"[step2][top_out]overlay=x=20:y=20,scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]",
-            # map our final stream
+            # overlay bounce watermark
+            f"[base][bounce_out]overlay=x='main_w-w-30':y='main_h-h-60'[step1];"
+            # overlay static watermark
+            f"[step1][static_out]overlay=x='(main_w-w)/2':y='main_h-h-10'[step2];"
+            # overlay top watermark + enforce even dims
+            f"[step2][top_out]overlay=x=20:y=20,"
+            f"scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]",
+            # map the final result
             "-map", "[final]",
-            "-map_metadata", "-1",
-            "-map_chapters", "-1",
-            # encoding settings
+            "-map_metadata", "-1", "-map_chapters", "-1",
+            # video encoding
             "-r", str(framerate),
-            "-g", "48",
-            "-keyint_min", "24",
-            "-sc_threshold", "0",
-            "-b:v", "2.5M",
-            "-maxrate", "2.5M",
-            "-bufsize", "5M",
+            "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
+            "-b:v", "2.5M", "-maxrate", "2.5M", "-bufsize", "5M",
             "-preset", "superfast",
             "-t", "40",
-            # audio copy
+            # audio pass-through
             "-c:a", "copy",
-            # write watermark pass
-            metadata_tag, watermarked_file
+            # metadata tag
+            "-metadata", metadata_tag,
+            watermarked_file
         ]
-
         subprocess.run(command, check=True)
 
-        # remux metadata-stripped copy
+        # Copy to final output (ensures metadata strip + audio intact)
         subprocess.run([
             "ffmpeg", "-i", watermarked_file,
-            "-map_metadata", "-1",
-            "-map_chapters", "-1",
-            "-c:v", "copy",
-            "-c:a", "copy",
+            "-map_metadata", "-1", "-map_chapters", "-1",
+            "-c:v", "copy", "-c:a", "copy",
             "-metadata", metadata_tag,
             final_output
         ], check=True)
@@ -110,9 +100,9 @@ def process_video():
         return send_file(final_output, as_attachment=True)
 
     except subprocess.CalledProcessError as e:
-        return {"error": f"FFmpeg error: {e.stderr or e}"}, 500
+        return {"error": f"FFmpeg error: {str(e)}"}, 500
     except Exception as e:
-        return {"error": f"Unexpected error: {e}"}, 500
+        return {"error": f"Unexpected error: {str(e)}"}, 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
