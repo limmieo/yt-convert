@@ -44,7 +44,7 @@ def wrap_caption(caption, width=30):
     lines = textwrap.wrap(caption, width)
     if len(lines) > 2:
         lines = [" ".join(lines[:-1]), lines[-1]]
-    return "\\n".join(lines).replace(":", "\\:")
+    return "\\n".join(lines)
 
 @app.route('/process/<brand>', methods=['POST'])
 def process_video(brand):
@@ -67,15 +67,18 @@ def process_video(brand):
         lut_file = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
         captions = os.path.join(assets, cfg["captions_file"])
 
+        # Download
         subprocess.run([
             "wget", "-q", "--header=User-Agent: Mozilla/5.0",
             "-O", in_mp4, video_url
         ], check=True)
 
+        # Pick & wrap a caption
         with open(captions, encoding="utf-8") as f:
             lines = [l.strip() for l in f if l.strip()]
         wrapped = wrap_caption(random.choice(lines))
 
+        # Random watermark parameters
         ob  = round(random.uniform(0.6, 0.7), 2)
         os_ = round(random.uniform(0.85, 0.95), 2)
         ot  = round(random.uniform(0.4, 0.6), 2)
@@ -83,13 +86,18 @@ def process_video(brand):
         ss  = random.uniform(1.1, 1.25)
         st  = random.uniform(0.9, 1.1)
         fr  = round(random.uniform(29.87, 30.1), 3)
+
         lut_filter = f"lut3d='{lut_file}'," if lut_file else ""
 
+        # Single-line, clean filter_complex
         fc = (
             "[1:v]split=3[wb][ws][wt];"
-            f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,colorchannelmixer=aa={ob}[bounce];"
-            f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,colorchannelmixer=aa={os_}[static];"
-            f"[wt]scale=iw*{st}:ih*{st},format=rgba,colorchannelmixer=aa={ot}[top];"
+            f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,"
+            f"colorchannelmixer=aa={ob}[bounce];"
+            f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,"
+            f"colorchannelmixer=aa={os_}[static];"
+            f"[wt]scale=iw*{st}:ih*{st},format=rgba,"
+            f"colorchannelmixer=aa={ot}[top];"
             "[0:v]hflip,setpts=PTS+0.001/TB,"
             "scale=iw*0.98:ih*0.98,"
             "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
@@ -110,7 +118,8 @@ def process_video(brand):
             "[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
-        encode = subprocess.run([
+        # First pass: encode video & copy audio
+        cmd = [
             "ffmpeg", "-y",
             "-i", in_mp4,
             "-i", wm_file,
@@ -126,12 +135,11 @@ def process_video(brand):
             "-c:a", "copy",
             "-metadata", metadata,
             mid_mp4
-        ], stderr=subprocess.PIPE, text=True)
+        ]
+        subprocess.run(cmd, check=True)
 
-        if encode.returncode != 0:
-            raise RuntimeError(encode.stderr)
-
-        final = subprocess.run([
+        # Strip metadata & chapters
+        subprocess.run([
             "ffmpeg", "-y",
             "-i", mid_mp4,
             "-map_metadata", "-1",
@@ -140,18 +148,17 @@ def process_video(brand):
             "-c:a", "copy",
             "-metadata", metadata,
             out_mp4
-        ], stderr=subprocess.PIPE, text=True)
-
-        if final.returncode != 0:
-            raise RuntimeError(final.stderr)
+        ], check=True)
 
         return send_file(out_mp4, as_attachment=True)
 
+    except subprocess.CalledProcessError as e:
+        return {"error": f"FFmpeg failed: {e}"}, 500
     except Exception as e:
-        return {"error": str(e)}, 500
+        return {"error": f"Unexpected error: {e}"}, 500
     finally:
-        for f in [in_mp4, mid_mp4]:
-            try: os.remove(f)
+        for path in (in_mp4, mid_mp4):
+            try: os.remove(path)
             except: pass
 
 if __name__ == "__main__":
