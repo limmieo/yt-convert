@@ -3,153 +3,117 @@ import subprocess
 import uuid
 import os
 import random
-import textwrap
 
 app = Flask(__name__)
 
-BRANDS = {
-    "thick_asian": {
-        "metadata": "brand=thick_asian",
-        "lut": "Cobi_3.CUBE",
-        "watermarks": [
-            "Thick_asian_watermark.png",
-            "Thick_asian_watermark_2.png",
-            "Thick_asian_watermark_3.png"
-        ],
-        "captions_file": "thick_asian_captions.txt"
-    },
-    "gym_baddie": {
-        "metadata": "brand=gym_baddie",
-        "lut": "Cobi_3.CUBE",
-        "watermarks": [
-            "gym_baddie_watermark.png",
-            "gym_baddie_watermark_2.png",
-            "gym_baddie_watermark_3.png"
-        ],
-        "captions_file": "gym_baddie_captions.txt"
-    },
-    "polishedform": {
-        "metadata": "brand=polishedform",
-        "lut": None,
-        "watermarks": [
-            "polished_watermark.png",
-            "polished_watermark_2.png",
-            "polished_watermark_3.png"
-        ],
-        "captions_file": "polishedform_captions.txt"
-    }
-}
-
-def wrap_caption(caption, width=30):
-    lines = textwrap.wrap(caption, width)
-    if len(lines) > 2:
-        lines = [" ".join(lines[:-1]), lines[-1]]
-    return "\\n".join(lines)
-
-def escape_text(text):
-    return text.replace(":", "\\:").replace("'", "\\'").replace(",", "\\,")
-
-@app.route('/process/<brand>', methods=['POST'])
-def process_video(brand):
-    if brand not in BRANDS:
-        return {"error": f"Unsupported brand '{brand}'."}, 400
-
+@app.route('/process', methods=['POST'])
+def process_video():
     video_url = request.json.get('video_url')
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
 
-    in_mp4  = f"/tmp/{uuid.uuid4()}.mp4"
-    mid_mp4 = f"/tmp/{uuid.uuid4()}_mid.mp4"
-    out_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
+    # prepare temp paths
+    input_file       = f"/tmp/{uuid.uuid4()}.mp4"
+    watermarked_file = f"/tmp/{uuid.uuid4()}_marked.mp4"
+    final_output     = f"/tmp/{uuid.uuid4()}_final.mp4"
+
+    metadata_tag = "brand=thick_asian"
 
     try:
-        cfg = BRANDS[brand]
-        assets = os.path.join(os.getcwd(), "assets")
-        wm_file = os.path.join(assets, random.choice(cfg["watermarks"]))
-        lut_file = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
-        captions_path = os.path.join(assets, cfg["captions_file"])
+        # assets folder
+        assets_path = os.path.join(os.getcwd(), "assets")
+        watermark_choice = os.path.join(assets_path, random.choice([
+            "watermark.png",
+            "watermark_2.png",
+            "watermark_3.png"
+        ]))
+        lut_path = os.path.join(assets_path, "Cobi_3.CUBE")
 
+        # download source
         subprocess.run([
-            "wget", "-q", "--header=User-Agent: Mozilla/5.0",
-            "-O", in_mp4, video_url
+            "wget", "--header=User-Agent: Mozilla/5.0",
+            "-O", input_file, video_url
         ], check=True)
 
-        with open(captions_path, encoding="utf-8") as f:
-            caption_lines = [l.strip() for l in f if l.strip()]
-        raw_caption = random.choice(caption_lines)
-        caption = escape_text(wrap_caption(raw_caption))
+        # dynamic visual params
+        opacity_bounce     = round(random.uniform(0.6, 0.7), 2)
+        opacity_static     = round(random.uniform(0.85, 0.95), 2)
+        opacity_topleft    = round(random.uniform(0.4, 0.6), 2)
+        scale_bounce       = random.uniform(0.83, 1.0)
+        scale_static       = random.uniform(1.05, 1.2)
+        scale_topleft      = random.uniform(0.6, 0.75)
+        framerate          = round(random.uniform(29.87, 30.1), 3)
 
-        ob = round(random.uniform(0.6, 0.7), 2)
-        os_ = round(random.uniform(0.85, 0.95), 2)
-        ot = round(random.uniform(0.4, 0.6), 2)
-        sb = random.uniform(0.85, 1.0)
-        ss = random.uniform(1.1, 1.25)
-        st = random.uniform(0.9, 1.1)
-        fr = round(random.uniform(29.87, 30.1), 3)
-
-        lut_filter = f"lut3d='{lut_file}'," if lut_file else ""
-
-        fc = (
-            "[1:v]split=3[wb][ws][wt];"
-            f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,colorchannelmixer=aa={ob}[bounce];"
-            f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,colorchannelmixer=aa={os_}[static];"
-            f"[wt]scale=iw*{st}:ih*{st},format=rgba,colorchannelmixer=aa={ot}[top];"
-            "[0:v]hflip,setpts=PTS+0.001/TB,"
-            "scale=720:1280,"
-            f"{lut_filter}"
-            "eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
-            "[base][bounce]overlay=x=main_w-w-40:y=main_h-h-80[b1];"
-            "[b1][static]overlay=x=(main_w-w)/2:y=main_h-h-20[b2];"
-            "[b2][top]overlay=x=main_w-w-50:y=60[b3];"
-            "[b3]drawtext="
-            "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
-            f"text='{caption}':"
-            "fontcolor=white:fontsize=28:"
-            "box=1:boxcolor=black@0.6:boxborderw=10:"
-            "x=(w-text_w)/2:y=h*0.45:"
-            "enable='between(t,0,4)',"
-            "alpha='if(lt(t,3),1,1-(t-3))'[final]"
-        )
-
-        subprocess.run([
-            "ffmpeg", "-y",
-            "-i", in_mp4,
-            "-i", wm_file,
-            "-filter_complex", fc,
+        # build ffmpeg command
+        command = [
+            "ffmpeg",
+            "-i", input_file,
+            "-i", watermark_choice,
+            "-filter_complex",
+            # split out the three watermark streams
+            f"[1:v]split=3[wm_bounce][wm_static][wm_top];"
+            # bounce watermark → static top-right
+            f"[wm_bounce]scale=iw*{scale_bounce}:ih*{scale_bounce},"
+            f"format=rgba,colorchannelmixer=aa={opacity_bounce}[bounce_out];"
+            # static watermark → center bottom (lowered)
+            f"[wm_static]scale=iw*{scale_static}:ih*{scale_static},"
+            f"format=rgba,colorchannelmixer=aa={opacity_static}[static_out];"
+            # top-left little watermark
+            f"[wm_top]scale=iw*{scale_topleft}:ih*{scale_topleft},"
+            f"format=rgba,colorchannelmixer=aa={opacity_topleft}[top_out];"
+            # base video: flip, slight scale, crop, LUT, pad, color tweak
+            f"[0:v]hflip,setpts=PTS+0.001/TB,"
+            f"scale=iw*0.98:ih*0.98,"
+            f"crop=iw-6:ih-6:(random(1)*6):(random(1)*6),"
+            f"lut3d='{lut_path}',"
+            f"pad=iw+4:ih+4:(ow-iw)/2:(oh-ih)/2,"
+            f"eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
+            # overlay bounce static at top-right
+            f"[base][bounce_out]overlay=x=main_w-w-30:y=20[step1];"
+            # overlay static watermark center bottom lower
+            f"[step1][static_out]overlay=x=(main_w-w)/2:y=main_h-h-10[step2];"
+            # overlay top-left watermark, then force even dims
+            f"[step2][top_out]overlay=x=20:y=20,scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]",
+            # map our final stream
             "-map", "[final]",
-            "-map", "0:a?",
-            "-r", str(fr),
-            "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
-            "-b:v", "2500k", "-maxrate", "2500k", "-bufsize", "5000k",
-            "-preset", "slow", "-profile:v", "high",
+            "-map_metadata", "-1",
+            "-map_chapters", "-1",
+            # encoding settings
+            "-r", str(framerate),
+            "-g", "48",
+            "-keyint_min", "24",
+            "-sc_threshold", "0",
+            "-b:v", "2.5M",
+            "-maxrate", "2.5M",
+            "-bufsize", "5M",
+            "-preset", "superfast",
             "-t", "40",
-            "-c:v", "libx264",
+            # audio copy
             "-c:a", "copy",
-            "-metadata", cfg["metadata"],
-            mid_mp4
-        ], check=True)
+            # write watermark pass
+            metadata_tag, watermarked_file
+        ]
 
+        subprocess.run(command, check=True)
+
+        # remux metadata-stripped copy
         subprocess.run([
-            "ffmpeg", "-y",
-            "-i", mid_mp4,
+            "ffmpeg", "-i", watermarked_file,
             "-map_metadata", "-1",
             "-map_chapters", "-1",
             "-c:v", "copy",
             "-c:a", "copy",
-            "-metadata", cfg["metadata"],
-            out_mp4
+            "-metadata", metadata_tag,
+            final_output
         ], check=True)
 
-        return send_file(out_mp4, as_attachment=True)
+        return send_file(final_output, as_attachment=True)
 
     except subprocess.CalledProcessError as e:
-        return {"error": f"FFmpeg failed: {e}"}, 500
+        return {"error": f"FFmpeg error: {e.stderr or e}"}, 500
     except Exception as e:
         return {"error": f"Unexpected error: {e}"}, 500
-    finally:
-        for path in (in_mp4, mid_mp4):
-            try: os.remove(path)
-            except: pass
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
