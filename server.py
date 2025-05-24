@@ -46,6 +46,13 @@ def wrap_caption(caption, width=30):
         lines = [" ".join(lines[:-1]), lines[-1]]
     return "\\n".join(lines)
 
+def escape_ffmpeg_text(text):
+    return text.replace("\\", "\\\\") \
+               .replace(":", "\\:") \
+               .replace("'", "\\'") \
+               .replace(",", "\\,") \
+               .replace("\n", "\\n")
+
 @app.route('/process/<brand>', methods=['POST'])
 def process_video(brand):
     if brand not in BRANDS:
@@ -60,10 +67,10 @@ def process_video(brand):
     out_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
 
     try:
-        cfg      = BRANDS[brand]
+        cfg = BRANDS[brand]
         metadata = cfg["metadata"]
-        assets   = os.path.join(os.getcwd(), "assets")
-        wm_file  = os.path.join(assets, random.choice(cfg["watermarks"]))
+        assets = os.path.join(os.getcwd(), "assets")
+        wm_file = os.path.join(assets, random.choice(cfg["watermarks"]))
         lut_file = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
         captions = os.path.join(assets, cfg["captions_file"])
 
@@ -74,15 +81,16 @@ def process_video(brand):
 
         with open(captions, encoding="utf-8") as f:
             lines = [l.strip() for l in f if l.strip()]
-        wrapped = wrap_caption(random.choice(lines))
+        raw_caption = random.choice(lines)
+        wrapped = escape_ffmpeg_text(wrap_caption(raw_caption))
 
-        ob  = round(random.uniform(0.6, 0.7), 2)
+        ob = round(random.uniform(0.6, 0.7), 2)
         os_ = round(random.uniform(0.85, 0.95), 2)
-        ot  = round(random.uniform(0.4, 0.6), 2)
-        sb  = random.uniform(0.85, 1.0)
-        ss  = random.uniform(1.1, 1.25)
-        st  = random.uniform(0.9, 1.1)
-        fr  = round(random.uniform(29.87, 30.1), 3)
+        ot = round(random.uniform(0.4, 0.6), 2)
+        sb = random.uniform(0.85, 1.0)
+        ss = random.uniform(1.1, 1.25)
+        st = random.uniform(0.9, 1.1)
+        fr = round(random.uniform(29.87, 30.1), 3)
         lut_filter = f"lut3d='{lut_file}'," if lut_file else ""
 
         fc = (
