@@ -49,9 +49,6 @@ def wrap_caption(caption, width=30):
         lines = [" ".join(lines[:-1]), lines[-1]]
     return "\\n".join(lines)
 
-def escape_ffmpeg_text(text):
-    return text.replace('\\', '\\\\').replace(':', '\\:').replace("'", "\\'")
-
 @app.route('/process/<brand>', methods=['POST'])
 def process_video(brand):
     if brand not in BRANDS:
@@ -61,7 +58,7 @@ def process_video(brand):
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
 
-    in_mp4  = f"/tmp/{uuid.uuid4()}.mp4"
+    in_mp4 = f"/tmp/{uuid.uuid4()}.mp4"
     mid_mp4 = f"/tmp/{uuid.uuid4()}_mid.mp4"
     out_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
 
@@ -69,6 +66,7 @@ def process_video(brand):
         cfg = BRANDS[brand]
         metadata = cfg["metadata"]
         assets = os.path.join(os.getcwd(), "assets")
+
         wm_file = os.path.join(assets, random.choice(cfg["watermarks"]))
         lut_file = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
         captions = os.path.join(assets, cfg["captions_file"])
@@ -81,7 +79,7 @@ def process_video(brand):
         with open(captions, encoding="utf-8") as f:
             lines = [l.strip() for l in f if l.strip()]
         raw = random.choice(lines)
-        wrapped = escape_ffmpeg_text(wrap_caption(raw))
+        wrapped = wrap_caption(raw)
 
         ob = round(random.uniform(0.6, 0.7), 2)
         os_ = round(random.uniform(0.85, 0.95), 2)
@@ -115,7 +113,7 @@ def process_video(brand):
             "x=(w-text_w)/2:y=h*0.45:"
             "enable='between(t,0,4)':"
             "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
-            "[captioned]scale=ceil(iw/2)*2:ceil(ih/2)*2[final]"
+            "[captioned]scale='if(mod(iw,2),iw+1,iw):if(mod(ih,2),ih+1,ih)'[final]"
         )
 
         subprocess.run([
@@ -155,8 +153,10 @@ def process_video(brand):
         return {"error": f"Unexpected error: {e}"}, 500
     finally:
         for p in (in_mp4, mid_mp4):
-            try: os.remove(p)
-            except: pass
+            try:
+                os.remove(p)
+            except:
+                pass
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
