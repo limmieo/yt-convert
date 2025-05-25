@@ -89,7 +89,7 @@ def process_video(brand):
 
         lut_filter = f"lut3d='{lut_file}'," if lut_file else ""
 
-        # Single-line, clean filter_complex
+        # Build filter_complex
         fc = (
             "[1:v]split=3[wb][ws][wt];"
             f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,"
@@ -118,7 +118,7 @@ def process_video(brand):
             "[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
-        # First pass: encode video & copy audio
+        # **First pass: use ultrafast + auto threads for speed**
         cmd = [
             "ffmpeg", "-y",
             "-i", in_mp4,
@@ -129,7 +129,8 @@ def process_video(brand):
             "-r", str(fr),
             "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
             "-b:v", "8M", "-maxrate", "8M", "-bufsize", "16M",
-            "-preset", "slow", "-profile:v", "high",
+            "-preset", "ultrafast",   # ← much faster encoding
+            "-threads", "0",          # ← auto-detect CPU cores
             "-t", "40",
             "-c:v", "libx264",
             "-c:a", "copy",
@@ -153,12 +154,12 @@ def process_video(brand):
         return send_file(out_mp4, as_attachment=True)
 
     except subprocess.CalledProcessError as e:
-        return {"error": f"FFmpeg failed: {e}"}, 500
+        return {"error": f"FFmpeg failed:\n{e.stderr.decode()}"}, 500
     except Exception as e:
         return {"error": f"Unexpected error: {e}"}, 500
     finally:
-        for path in (in_mp4, mid_mp4):
-            try: os.remove(path)
+        for p in (in_mp4, mid_mp4, out_mp4):
+            try: os.remove(p)
             except: pass
 
 if __name__ == "__main__":
