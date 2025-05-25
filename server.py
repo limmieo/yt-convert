@@ -3,6 +3,7 @@ import subprocess
 import uuid
 import os
 import random
+import requests
 
 app = Flask(__name__)
 
@@ -46,15 +47,26 @@ def process_video(brand):
         return "Unknown brand", 400
 
     config = BRANDS[brand]
-    file = request.files.get("video")
-    if not file:
-        return "No video provided", 400
+    data = request.get_json()
+    video_url = data.get("video_url")
 
+    if not video_url:
+        return "No video_url provided", 400
+
+    # Download video to temporary file
     input_path = f"/tmp/{uuid.uuid4()}.mp4"
     output_path = f"/tmp/{uuid.uuid4()}.mp4"
-    file.save(input_path)
 
-    # Get a random caption
+    try:
+        with requests.get(video_url, stream=True, timeout=15) as r:
+            r.raise_for_status()
+            with open(input_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+    except Exception as e:
+        return f"Failed to download video: {str(e)}", 500
+
+    # Get random caption
     try:
         with open(config["captions_file"], "r", encoding="utf-8") as f:
             captions = [line.strip() for line in f if line.strip()]
