@@ -86,44 +86,37 @@ def process_video(brand):
         ss       = random.uniform(1.1, 1.25)
         st       = random.uniform(0.9, 1.1)
         fr       = round(random.uniform(29.87, 30.1), 3)
-        dx       = round(random.uniform(20, 40), 2)
-        dy       = round(random.uniform(20, 40), 2)
-        delay_x  = round(random.uniform(0.2, 1.0), 2)
-        delay_y  = round(random.uniform(0.2, 1.0), 2)
         lut_filt = f"lut3d='{lut_file}'," if lut_file else ""
 
         # 4) Build filter_complex
         fc = (
             # split watermark inputs
             "[1:v]split=3[wb][ws][wt];"
-            # bounce watermark
-            f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,"
-            f"colorchannelmixer=aa={ob}[bounce];"
+            # bouncing watermark
+            f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,colorchannelmixer=aa={ob}[bounce];"
             # static watermark
-            f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,"
-            f"colorchannelmixer=aa={os_}[static];"
+            f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,colorchannelmixer=aa={os_}[static];"
             # top watermark
-            f"[wt]scale=iw*{st}:ih*{st},format=rgba,"
-            f"colorchannelmixer=aa={ot}[top];"
-            # base video: slight desync, scale, LUT, 75px black border
+            f"[wt]scale=iw*{st}:ih*{st},format=rgba,colorchannelmixer=aa={ot}[top];"
+            # base video: slight desync, scale down, LUT, 75px black border
             "[0:v]setpts=PTS+0.001/TB,"
             "scale=iw*0.98:ih*0.98,"
             f"{lut_filt}"
             "pad=iw+150:ih+150:75:75:color=black[padded];"
-            # bold white border inside that 75px frame
+            # bold white inner border
             "[padded]drawbox="
               "x=75:y=75:w=iw-150:h=ih-150:"
               "color=white@0.8:t=8[boxed];"
-            # 1st overlay: bouncing watermark bottom-right
+            # bouncing watermark bottom-right
             "[boxed][bounce]overlay="
               "x=main_w-w-20:y=main_h-h-20[b1];"
-            # 2nd overlay: static watermark bottom-center
+            # static watermark bottom-center
             "[b1][static]overlay="
               "x=(main_w-w)/2:y=main_h-h-30[b2];"
-            # 3rd overlay: top watermark scrolling right
+            # top watermark scrolling right
             "[b2][top]overlay="
               "x='mod(t*100,main_w+w)-w':y=20[step3];"
-            # 4th: fading caption
+            # fading caption
             "[step3]drawtext="
               "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
               f"text='{wrapped}':"
@@ -132,11 +125,10 @@ def process_video(brand):
               "x=(w-text_w)/2:y=h*0.45:"
               "enable='between(t,0,4)':"
               "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
-            # 5th: ensure minimum height 960 & even dims for H.264
-            "[captioned]scale="
-              "'if(lt(ih,960),-2,trunc(iw/2)*2)':"
-              "'if(lt(ih,960),960,trunc(ih/2)*2)'"
-              "[final]"
+            # ensure at least 960px height, centered in black bars
+            "[captioned]pad=iw:960:(ow-iw)/2:(960-ih)/2:color=black[padded2];"
+            # enforce even dims for H.264
+            "[padded2]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
         # 5) First-pass encode
@@ -179,7 +171,8 @@ def process_video(brand):
     except Exception as e:
         return {"error": f"Unexpected error: {e}"}, 500
     finally:
-        for fpath in (in_mp4, mid_mp4, out_mp4):
+        # remove only the download + mid files—leave out_mp4 alive for streaming
+        for fpath in (in_mp4, mid_mp4):
             try: os.remove(fpath)
             except: pass
 
