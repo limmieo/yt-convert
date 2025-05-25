@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# PUSH: add corner hearts + 45px bars | 2025-05-25
+
 from flask import Flask, request, send_file
 import subprocess
 import uuid
@@ -40,6 +43,8 @@ BRANDS = {
     }
 }
 
+HEARTS = ["🥰", "😍", "😻", "💌", "💘", "💝", "💗"]
+
 def wrap_caption(caption, width=30):
     lines = textwrap.wrap(caption, width)
     if len(lines) > 2:
@@ -55,6 +60,7 @@ def process_video(brand):
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
 
+    # prepare temp files
     in_mp4  = f"/tmp/{uuid.uuid4()}.mp4"
     mid_mp4 = f"/tmp/{uuid.uuid4()}_mid.mp4"
     out_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
@@ -67,18 +73,21 @@ def process_video(brand):
         lut_file = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
         captions = os.path.join(assets, cfg["captions_file"])
 
-        # Download source video
+        # download input
         subprocess.run([
             "wget", "-q", "--header=User-Agent: Mozilla/5.0",
             "-O", in_mp4, video_url
         ], check=True)
 
-        # Pick and wrap a caption
+        # pick & wrap caption
         with open(captions, encoding="utf-8") as f:
             lines = [l.strip() for l in f if l.strip()]
         wrapped = wrap_caption(random.choice(lines))
 
-        # Random watermark parameters
+        # pick 4 random hearts
+        corners = random.sample(HEARTS, 4)
+
+        # random watermark params
         ob  = round(random.uniform(0.6, 0.7), 2)
         os_ = round(random.uniform(0.85, 0.95), 2)
         ot  = round(random.uniform(0.4, 0.6), 2)
@@ -87,86 +96,61 @@ def process_video(brand):
         st  = random.uniform(0.9, 1.1)
         fr  = round(random.uniform(29.87, 30.1), 3)
 
-        # LUT filter snippet if present
         lut_filter = f"lut3d='{lut_file}'," if lut_file else ""
 
-        # Emoji-cycle expression (changes every 3s)
-        emoji_expr = (
-            "%{eif:mod(floor(t/3)\\,7)==0?'🥰':"
-            "mod(floor(t/3)\\,7)==1?'😍':"
-            "mod(floor(t/3)\\,7)==2?'😻':"
-            "mod(floor(t/3)\\,7)==3?'💌':"
-            "mod(floor(t/3)\\,7)==4?'💘':"
-            "mod(floor(t/3)\\,7)==5?'💝':'💗'}"
-        )
-
-        # Build the filter_complex
+        # build filter_complex
         fc = (
-            # watermark split + scales
+            # split watermark into 3 streams
             "[1:v]split=3[wb][ws][wt];"
+            # bounce-watermark
             f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,"
               f"colorchannelmixer=aa={ob}[bounce];"
+            # static-watermark
             f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,"
               f"colorchannelmixer=aa={os_}[static];"
+            # top-watermark
             f"[wt]scale=iw*{st}:ih*{st},format=rgba,"
               f"colorchannelmixer=aa={ot}[top];"
 
-            # base video distort + LUT + border
+            # base video chain
             "[0:v]hflip,setpts=PTS+0.001/TB,"
               "scale=iw*0.98:ih*0.98,"
               "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
             f"{lut_filter}"
-              "pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
+              "pad=iw:ih+90:0:45:black,"    # 45px top & bottom
               "eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
 
             # overlay watermarks
-            "[base][bounce]overlay=x=main_w-w-40:y=main_h-h-80[b1];"
-            "[b1][static]overlay=x=(main_w-w)/2:y=main_h-h-20[b2];"
-            "[b2][top]   overlay=x=main_w-w-50:y=60[b3];"
+            "[base][bounce]overlay=x=main_w-w-40:y=ih-h+5[b1];"
+            "[b1][static]overlay=x=(main_w-w)/2:y=ih-h+5[b2];"
+            "[b2][top]overlay=x=main_w-w-50:y=45[b3];"
 
-            # caption text
+            # caption
             "[b3]drawtext="
               "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
               f"text='{wrapped}':"
               "fontcolor=white:fontsize=28:"
               "box=1:boxcolor=black@0.6:boxborderw=10:"
-              "x=(w-text_w)/2:y=h*0.45:"
+              "x=(w-text_w)/2:y=(h-text_h)/2:"
               "enable='between(t,0,4)':"
-              "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
+              "alpha='if(lt(t,3),1,1-(t-3))'[cap];"
 
-            # top-left emoji
-            "[captioned]drawtext="
-              "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
-              f"text='{emoji_expr}':"
-              "fontcolor=white:fontsize=32:"
-              "x=45:y=45[e1];"
-
-            # top-right emoji
-            "[e1]drawtext="
-              "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
-              f"text='{emoji_expr}':"
-              "fontcolor=white:fontsize=32:"
-              "x=w-text_w-45:y=45[e2];"
-
-            # bottom-left emoji
-            "[e2]drawtext="
-              "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
-              f"text='{emoji_expr}':"
-              "fontcolor=white:fontsize=32:"
-              "x=45:y=h-text_h-45[e3];"
-
-            # bottom-right emoji
-            "[e3]drawtext="
-              "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
-              f"text='{emoji_expr}':"
-              "fontcolor=white:fontsize=32:"
-              "x=w-text_w-45:y=h-text_h-45[e4];"
-
-            # final even-dims pass
-            "[e4]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
+            # four corner hearts (static, one per corner)
+            f"[cap]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
+              f"text='{corners[0]}':fontcolor=white:fontsize=32:"
+              "x=30:y=30[h1];"
+            "[h1]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
+              f"text='{corners[1]}':fontcolor=white:fontsize=32:"
+              "x=w-text_w-30:y=30[h2];"
+            "[h2]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
+              f"text='{corners[2]}':fontcolor=white:fontsize=32:"
+              "x=30:y=h-text_h-30[h3];"
+            "[h3]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
+              f"text='{corners[3]}':fontcolor=white:fontsize=32:"
+              "x=w-text_w-30:y=h-text_h-30[final]"
         )
 
-        # First ffmpeg pass: fast encode, copy audio
+        # first pass — fast encode, keep audio
         cmd = [
             "ffmpeg", "-y",
             "-i", in_mp4,
@@ -187,7 +171,7 @@ def process_video(brand):
         ]
         subprocess.run(cmd, check=True)
 
-        # Strip metadata & chapters
+        # strip metadata & chapters
         subprocess.run([
             "ffmpeg", "-y",
             "-i", mid_mp4,
@@ -202,8 +186,8 @@ def process_video(brand):
         return send_file(out_mp4, as_attachment=True)
 
     except subprocess.CalledProcessError as e:
-        stderr = getattr(e, 'stderr', None)
-        msg = stderr.decode() if stderr else str(e)
+        err = getattr(e, 'stderr', None)
+        msg = err.decode() if err else str(e)
         return {"error": f"FFmpeg failed:\n{msg}"}, 500
 
     except Exception as e:
