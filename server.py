@@ -82,7 +82,8 @@ def process_video(brand):
 
     filters.append(
         f"[0:v]scale=1080:-2:force_original_aspect_ratio=decrease,"
-        f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black[{label}]"
+        f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,"
+        f"format=yuv420p[{label}]"
     )
 
     if apply_flip_v:
