@@ -117,7 +117,7 @@ def process_video(brand):
               "x=(w-text_w)/2:y=h*0.45:"
               "enable='between(t,0,4)':"
               "alpha='if(lt(t,3),1,1-(t-3))',"
-              "scale=trunc(iw/2)*2:trunc(ih/2)*2"
+              "scale=1080:1920"
               "[final]"
         )
 
@@ -130,7 +130,7 @@ def process_video(brand):
             "-map", "0:a?",
             "-r", str(fr),
             "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
-            "-b:v", "8M", "-maxrate", "8M", "-bufsize", "16M",
+            "-b:v", "10M", "-maxrate", "10M", "-bufsize", "20M",
             "-preset", "slow", "-profile:v", "high",
             "-t", "40",
             "-c:v", "libx264",
