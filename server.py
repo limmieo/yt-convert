@@ -88,7 +88,7 @@ def process_video(brand):
         fr       = round(random.uniform(29.87, 30.1), 3)
         lut_filt = f"lut3d='{lut_file}'," if lut_file else ""
 
-        # 4) Build filter_complex with dynamic pad
+        # 4) Build filter_complex (pad only when ih<960 via enable)
         fc = (
             "[1:v]split=3[wb][ws][wt];"
             f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,colorchannelmixer=aa={ob}[bounce];"
@@ -107,14 +107,12 @@ def process_video(brand):
               "fontcolor=white:fontsize=28:"
               "box=1:boxcolor=black@0.6:boxborderw=10:"
               "x=(w-text_w)/2:y=h*0.45:"
-              "enable='between(t,0,4)':alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
-            # --- DYNAMIC PAD TO AT LEAST 960px HEIGHT ---
-            "[captioned]pad=iw:"
-              "if(lt(ih\\,960)\\,960\\,ih):"
-              "(ow-iw)/2:"
-              "if(lt(ih\\,960)\\,(960-ih)/2\\,0):"
-              "color=black[padded2];"
-            # --- ENFORCE EVEN DIMENSIONS & OUTPUT ---
+              "enable='between(t,0,4)':"
+              "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
+            # pad only if height < 960, center horizontally, center vertically
+            "[captioned]pad=iw:960:(ow-iw)/2:(960-ih)/2:color=black:"
+            "enable='lt(ih,960)'[padded2];"
+            # enforce even dimensions & emit final
             "[padded2]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
@@ -125,7 +123,7 @@ def process_video(brand):
             "-i", wm_file,
             "-filter_complex", fc,
             "-map", "[final]",
-            "-map", "0:a?",             # passthrough audio
+            "-map", "0:a?",             # passthrough audio if present
             "-r", str(fr),
             "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
             "-b:v", "8M", "-maxrate", "8M", "-bufsize", "16M",
