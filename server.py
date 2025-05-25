@@ -3,7 +3,7 @@ import subprocess
 import uuid
 import os
 import random
-import requests
+import textwrap
 
 app = Flask(__name__)
 
@@ -11,7 +11,6 @@ BRANDS = {
     "thick_asian": {
         "metadata": "brand=thick_asian",
         "lut": "Cobi_3.CUBE",
-        "scroll_speed": 80,
         "watermarks": [
             "Thick_asian_watermark.png",
             "Thick_asian_watermark_2.png",
@@ -22,106 +21,145 @@ BRANDS = {
     "gym_baddie": {
         "metadata": "brand=gym_baddie",
         "lut": "Cobi_3.CUBE",
-        "scroll_speed": 100,
         "watermarks": [
             "gym_baddie_watermark.png",
-            "gym_baddie_watermark_2.png"
+            "gym_baddie_watermark_2.png",
+            "gym_baddie_watermark_3.png"
         ],
         "captions_file": "gym_baddie_captions.txt"
     },
     "polishedform": {
         "metadata": "brand=polishedform",
-        "lut": "CineGreen.CUBE",
-        "scroll_speed": 60,
+        "lut": None,
         "watermarks": [
-            "polishedform_mark.png",
-            "polishedform_mark_alt.png"
+            "polished_watermark.png",
+            "polished_watermark_2.png",
+            "polished_watermark_3.png"
         ],
         "captions_file": "polishedform_captions.txt"
     }
 }
 
-@app.route("/process/<brand>", methods=["POST"])
+def wrap_caption(caption, width=30):
+    lines = textwrap.wrap(caption, width)
+    if len(lines) > 2:
+        lines = [" ".join(lines[:-1]), lines[-1]]
+    return "\\n".join(lines)
+
+@app.route('/process/<brand>', methods=['POST'])
 def process_video(brand):
     if brand not in BRANDS:
-        return "Unknown brand", 400
+        return {"error": f"Unsupported brand '{brand}'."}, 400
 
-    config = BRANDS[brand]
-    data = request.get_json()
-    video_url = data.get("video_url")
-
+    video_url = request.json.get('video_url')
     if not video_url:
-        return "No video_url provided", 400
+        return {"error": "Missing video_url in request."}, 400
 
-    # Download video to temporary file
-    input_path = f"/tmp/{uuid.uuid4()}.mp4"
-    output_path = f"/tmp/{uuid.uuid4()}.mp4"
-
-    try:
-        with requests.get(video_url, stream=True, timeout=15) as r:
-            r.raise_for_status()
-            with open(input_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
-    except Exception as e:
-        return f"Failed to download video: {str(e)}", 500
-
-    # Get random caption
-    try:
-        with open(config["captions_file"], "r", encoding="utf-8") as f:
-            captions = [line.strip() for line in f if line.strip()]
-            caption_text = random.choice(captions)
-    except Exception as e:
-        return f"Failed to read caption file: {str(e)}", 500
-
-    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-    drawtext = (
-        f"drawtext=fontfile='{font_path}':"
-        f"text='{caption_text}':"
-        "fontcolor=white:fontsize=32:x=(w-text_w)/2:y=(h-text_h)/2:"
-        "enable='between(t,0,4)':"
-        "alpha='if(lt(t,3),1,1-(t-3))'"
-    )
-
-    filter_complex = (
-        f"[0:v]scale=1080:-2:force_original_aspect_ratio=decrease,"
-        f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,"
-        f"{drawtext},format=yuv420p[outv]"
-    )
-
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-loglevel", "error",
-        "-i", input_path,
-        "-filter_complex", filter_complex,
-        "-map", "[outv]",
-        "-map", "0:a?",
-        "-c:v", "libx264",
-        "-crf", "18",
-        "-preset", "fast",
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-shortest",
-        output_path
-    ]
+    in_mp4  = f"/tmp/{uuid.uuid4()}.mp4"
+    mid_mp4 = f"/tmp/{uuid.uuid4()}_mid.mp4"
+    out_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
 
     try:
-        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        cfg      = BRANDS[brand]
+        metadata = cfg["metadata"]
+        assets   = os.path.join(os.getcwd(), "assets")
+        wm_file  = os.path.join(assets, random.choice(cfg["watermarks"]))
+        lut_file = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
+        captions = os.path.join(assets, cfg["captions_file"])
 
-        if not os.path.exists(output_path) or os.path.getsize(output_path) < 1024:
-            return "FFmpeg finished but output file is empty or corrupted.", 500
+        # Download
+        subprocess.run([
+            "wget", "-q", "--header=User-Agent: Mozilla/5.0",
+            "-O", in_mp4, video_url
+        ], check=True)
 
-        return send_file(output_path, as_attachment=True)
+        # Pick & wrap a caption
+        with open(captions, encoding="utf-8") as f:
+            lines = [l.strip() for l in f if l.strip()]
+        wrapped = wrap_caption(random.choice(lines))
+
+        # Random watermark parameters
+        ob  = round(random.uniform(0.6, 0.7), 2)
+        os_ = round(random.uniform(0.85, 0.95), 2)
+        ot  = round(random.uniform(0.4, 0.6), 2)
+        sb  = random.uniform(0.85, 1.0)
+        ss  = random.uniform(1.1, 1.25)
+        st  = random.uniform(0.9, 1.1)
+        fr  = round(random.uniform(29.87, 30.1), 3)
+
+        lut_filter = f"lut3d='{lut_file}'," if lut_file else ""
+
+        # Single-line, clean filter_complex
+        fc = (
+            "[1:v]split=3[wb][ws][wt];"
+            f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,"
+            f"colorchannelmixer=aa={ob}[bounce];"
+            f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,"
+            f"colorchannelmixer=aa={os_}[static];"
+            f"[wt]scale=iw*{st}:ih*{st},format=rgba,"
+            f"colorchannelmixer=aa={ot}[top];"
+            "[0:v]hflip,setpts=PTS+0.001/TB,"
+            "scale=iw*0.98:ih*0.98,"
+            "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
+            f"{lut_filter}"
+            "pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
+            "eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
+            "[base][bounce]overlay=x=main_w-w-40:y=main_h-h-80[b1];"
+            "[b1][static]overlay=x=(main_w-w)/2:y=main_h-h-20[b2];"
+            "[b2][top]overlay=x=main_w-w-50:y=60[b3];"
+            "[b3]drawtext="
+            "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
+            f"text='{wrapped}':"
+            "fontcolor=white:fontsize=28:"
+            "box=1:boxcolor=black@0.6:boxborderw=10:"
+            "x=(w-text_w)/2:y=h*0.45:"
+            "enable='between(t,0,4)':"
+            "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
+            "[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
+        )
+
+        # First pass: encode video & copy audio
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", in_mp4,
+            "-i", wm_file,
+            "-filter_complex", fc,
+            "-map", "[final]",
+            "-map", "0:a?",
+            "-r", str(fr),
+            "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
+            "-b:v", "8M", "-maxrate", "8M", "-bufsize", "16M",
+            "-preset", "slow", "-profile:v", "high",
+            "-t", "40",
+            "-c:v", "libx264",
+            "-c:a", "copy",
+            "-metadata", metadata,
+            mid_mp4
+        ]
+        subprocess.run(cmd, check=True)
+
+        # Strip metadata & chapters
+        subprocess.run([
+            "ffmpeg", "-y",
+            "-i", mid_mp4,
+            "-map_metadata", "-1",
+            "-map_chapters", "-1",
+            "-c:v", "copy",
+            "-c:a", "copy",
+            "-metadata", metadata,
+            out_mp4
+        ], check=True)
+
+        return send_file(out_mp4, as_attachment=True)
 
     except subprocess.CalledProcessError as e:
-        return f"FFmpeg error:\n{e.stderr.decode('utf-8')}", 500
-
+        return {"error": f"FFmpeg failed: {e}"}, 500
+    except Exception as e:
+        return {"error": f"Unexpected error: {e}"}, 500
     finally:
-        if os.path.exists(input_path):
-            os.remove(input_path)
-        if os.path.exists(output_path):
-            os.remove(output_path)
+        for path in (in_mp4, mid_mp4):
+            try: os.remove(path)
+            except: pass
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
