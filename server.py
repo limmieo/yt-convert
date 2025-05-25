@@ -3,10 +3,11 @@ import subprocess
 import os
 import uuid
 import random
+import requests
 
 app = Flask(__name__)
 
-# Your brand config
+# Define brand settings
 BRANDS = {
     "thick_asian": {
         "lut": "Cobi_3.CUBE",
@@ -33,10 +34,24 @@ def process_video(brand):
     if brand not in BRANDS:
         return "Brand not supported", 400
 
-    video = request.files["video"]
+    data = request.get_json()
+    video_url = data.get("video_url")
+
+    if not video_url:
+        return "Missing video_url", 400
+
+    # Save the video to disk
     input_path = f"/tmp/{uuid.uuid4()}.mp4"
     output_path = f"/tmp/{uuid.uuid4()}.mp4"
-    video.save(input_path)
+
+    try:
+        r = requests.get(video_url, stream=True)
+        r.raise_for_status()
+        with open(input_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+    except Exception as e:
+        return f"Failed to download video: {str(e)}", 500
 
     config = BRANDS[brand]
     filters = []
@@ -45,12 +60,12 @@ def process_video(brand):
     caption = None
     if os.path.exists(config["captions_file"]):
         with open(config["captions_file"], "r", encoding="utf-8") as f:
-            lines = [line.strip() for line in f.readlines() if line.strip()]
+            lines = [line.strip() for line in f if line.strip()]
             if lines:
                 caption = random.choice(lines)
 
     if caption:
-        caption_escaped = caption.replace("'", "\\'")
+        caption_escaped = caption.replace(":", '\\:').replace("'", "\\'")
         filters.append(
             f"drawtext=text='{caption_escaped}':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=50:box=1:boxcolor=black@0.6"
         )
@@ -60,8 +75,8 @@ def process_video(brand):
     watermark_path = os.path.join("watermarks", selected_watermark)
     has_watermark = os.path.exists(watermark_path)
 
-    # If watermark is being added, make it a second input
     cmd = ["ffmpeg", "-y", "-i", input_path]
+
     if has_watermark:
         cmd += ["-i", watermark_path]
         filters.append("overlay=W-w-10:H-h-10")
