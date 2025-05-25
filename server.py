@@ -68,24 +68,23 @@ def process_video(brand):
     input_path = f"/tmp/{file_id}.mp4"
     output_path = f"/tmp/{file_id}_out.mp4"
 
-    # Download video
+    # Download the video
     subprocess.run(["curl", "-L", input_url, "-o", input_path], check=True)
 
-    # Prepare overlay data
+    # Prepare overlays
     caption = get_random_line(config["captions_file"])
     watermark = get_random_watermark(config["watermarks"])
     font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
     lut_path = config.get("lut", "")
 
-    # === FFmpeg Filter Construction ===
     filter_chain = "[0:v]"
     filter_steps = []
 
-    # Add LUT if exists
+    # Add LUT if valid
     if lut_path and os.path.isfile(lut_path):
         filter_steps.append(f"lut3d=file='{lut_path}'")
 
-    # Add black bar and text
+    # Add caption bar and text
     if caption:
         filter_steps.append("drawbox=y=0:color=black@0.8:width=iw:height=80:t=max")
         filter_steps.append(
@@ -93,27 +92,26 @@ def process_video(brand):
             f"fontcolor=white:fontsize=48:x=(w-text_w)/2:y=20:box=0"
         )
 
-    # Chain those effects
     if filter_steps:
         filter_chain += "," + ",".join(filter_steps)
-    filter_chain += "[base];"
-
-    # Add watermark overlay
-    filter_chain += f"movie='{watermark}'[wm];[base][wm]overlay=20:20"
+        filter_chain += "[base];"
+        filter_chain += f"movie='{watermark}'[wm];[base][wm]overlay=20:20"
+    else:
+        filter_chain += f"[base];movie='{watermark}'[wm];[0:v][wm]overlay=20:20"
 
     # === FFmpeg Command ===
     cmd = [
         "ffmpeg", "-y",
         "-i", input_path,
         "-filter_complex", filter_chain,
-        "-map", "0:v:0", "-map", "0:a?",  # Include audio if present
+        "-map", "0:v:0", "-map", "0:a?",
         "-c:v", "libx264", "-preset", "fast", "-crf", "18",
         "-c:a", "copy",
         "-movflags", "+faststart",
         output_path
     ]
 
-    print("Running FFmpeg command:\n", " ".join(cmd))  # Debug log
+    print("Running FFmpeg command:\n", " ".join(cmd))
 
     try:
         subprocess.run(cmd, check=True)
