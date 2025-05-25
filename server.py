@@ -1,177 +1,113 @@
-#!/usr/bin/env python3
-# server.py — single-endpoint, multi-brand video processor
-# PUSH: enforce even dims → 2025-05-25
-
 from flask import Flask, request, send_file
-import subprocess, uuid, os, random, textwrap
+import subprocess
+import uuid
+import os
+import random
 
 app = Flask(__name__)
 
-BRANDS = {
-    "thick_asian": {
-        "metadata": "brand=thick_asian",
-        "lut": "Cobi_3.CUBE",
-        "watermarks": [
-            "Thick_asian_watermark.png",
-            "Thick_asian_watermark_2.png",
-            "Thick_asian_watermark_3.png"
-        ],
-        "captions_file": "thick_asian_captions.txt"
-    },
-    "gym_baddie": {
-        "metadata": "brand=gym_baddie",
-        "lut": "Cobi_3.CUBE",
-        "watermarks": [
-            "gym_baddie_watermark.png",
-            "gym_baddie_watermark_2.png",
-            "gym_baddie_watermark_3.png"
-        ],
-        "captions_file": "gym_baddie_captions.txt"
-    },
-    "polishedform": {
-        "metadata": "brand=polishedform",
-        "lut": None,
-        "watermarks": [
-            "polished_watermark.png",
-            "polished_watermark_2.png",
-            "polished_watermark_3.png"
-        ],
-        "captions_file": "polishedform_captions.txt"
-    }
-}
-
-HEART_IMGS = ["heart_1.png", "heart_2.png", "heart_3.png"]
-
-def wrap_caption(caption, width=30):
-    lines = textwrap.wrap(caption, width)
-    if len(lines) > 2:
-        lines = [" ".join(lines[:-1]), lines[-1]]
-    return "\\n".join(lines)
-
-@app.route('/process/<brand>', methods=['POST'])
-def process_video(brand):
-    if brand not in BRANDS:
-        return {"error": f"Unsupported brand '{brand}'."}, 400
-
-    data = request.get_json() or {}
-    video_url = data.get('video_url')
+@app.route('/process/thick_asian', methods=['POST'])
+def process_video():
+    video_url = request.json.get('video_url')
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
 
-    # Temp files
-    in_mp4  = f"/tmp/{uuid.uuid4()}.mp4"
-    mid_mp4 = f"/tmp/{uuid.uuid4()}_mid.mp4"
-    out_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
+    # --- temp filenames ---
+    input_file   = f"/tmp/{uuid.uuid4()}.mp4"
+    mid_file     = f"/tmp/{uuid.uuid4()}_mid.mp4"
+    final_file   = f"/tmp/{uuid.uuid4()}_final.mp4"
 
-    try:
-        cfg      = BRANDS[brand]
-        metadata = cfg["metadata"]
-        assets   = os.path.join(os.getcwd(), "assets")
+    # --- download source clip ---
+    subprocess.run([
+        "wget", "--header=User-Agent: Mozilla/5.0",
+        "-O", input_file, video_url
+    ], check=True)
 
-        # pick your news-style watermark
-        wm_file = os.path.join(assets, random.choice(cfg["watermarks"]))
+    # --- randomize your bounce/static/top watermark params ---
+    opacity_bounce  = round(random.uniform(0.6, 0.7), 2)
+    opacity_static  = round(random.uniform(0.85, 0.95), 2)
+    opacity_topleft = round(random.uniform(0.4, 0.6),  2)
 
-        # pick 4 corner hearts (with replacement)
-        hearts = random.choices(HEART_IMGS, k=4)
-        heart_inputs = [os.path.join(assets, h) for h in hearts]
+    scale_bounce  = random.uniform(0.83, 1.0)
+    scale_static  = random.uniform(1.05, 1.2)
+    scale_topleft = random.uniform(0.6,  0.75)
 
-        # LUT filter if any
-        lut_file = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
-        lut_filter = f"lut3d='{lut_file}'," if lut_file else ""
+    framerate = round(random.uniform(29.87, 30.1), 3)
 
-        # pick & wrap a caption
-        with open(os.path.join(assets, cfg["captions_file"]), encoding="utf-8") as f:
-            lines = [l.strip() for l in f if l.strip()]
-        wrapped = wrap_caption(random.choice(lines))
+    # --- pick your assets from /assets ---
+    assets = os.path.join(os.getcwd(), "assets")
+    watermark_choice = os.path.join(
+        assets,
+        random.choice(["watermark.png", "watermark_2.png", "watermark_3.png"])
+    )
+    lut_path = os.path.join(assets, "Cobi_3.CUBE")
 
-        # slight random framerate tweak
-        fr = round(random.uniform(29.87, 30.1), 3)
+    # --- build the monolithic filtergraph ---
+    #    (no more escaping hell in the CLI)
+    fc = (
+        # split your PNG watermark into three streams
+        "[1:v]split=3[wm_bounce][wm_static][wm_top];"
+        # bounce watermark
+        f"[wm_bounce]scale=iw*{scale_bounce}:ih*{scale_bounce},"
+        f"format=rgba,colorchannelmixer=aa={opacity_bounce}[bounce_out];"
+        # static watermark
+        f"[wm_static]scale=iw*{scale_static}:ih*{scale_static},"
+        f"format=rgba,colorchannelmixer=aa={opacity_static}[static_out];"
+        # top-left watermark
+        f"[wm_top]scale=iw*{scale_topleft}:ih*{scale_topleft},"
+        f"format=rgba,colorchannelmixer=aa={opacity_topleft}[top_out];"
+        # flip & lightly crop+scale the base video
+        "[0:v]hflip,setpts=PTS+0.001/TB,scale=iw*0.98:ih*0.98[cropped];"
+        # overlay bounce at bottom-right
+        "[cropped][bounce_out]"
+        "overlay=x='main_w-w-30':y='main_h-h-60'[step1];"
+        # overlay static centered lower
+        "[step1][static_out]"
+        "overlay=x='(main_w-w)/2':y='main_h-h-10'[step2];"
+        # overlay top_out in the corner, apply your LUT & force even dimensions
+        "[step2][top_out]overlay=x=20:y=20,"
+        f"lut3d='{lut_path}',"
+        "scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
+    )
 
-        # build the fixed filter_complex
-        fc = (
-            # news-style watermark across center
-            "[1:v]scale=iw:-1,format=rgba,colorchannelmixer=aa=0.9[wm];"
-            # scale each heart to 64×64 and label [h1]–[h4]
-            "[2:v]scale=64:64,format=rgba[h1];"
-            "[3:v]scale=64:64,format=rgba[h2];"
-            "[4:v]scale=64:64,format=rgba[h3];"
-            "[5:v]scale=64:64,format=rgba[h4];"
-            # video base: flip, pad black bars, eq, then to [base]
-            "[0:v]hflip,setpts=PTS+0.001/TB," +
-            lut_filter +
-            "pad=iw:ih+90:0:45:black,"
-            "eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
-            # overlay news watermark
-            "[base][wm]overlay=x=0:y=(main_h-overlay_h)/2[b0];"
-            # overlay corners
-            "[b0][h1]overlay=x=10:y=10[b1];"
-            "[b1][h2]overlay=x=main_w-overlay_w-10:y=10[b2];"
-            "[b2][h3]overlay=x=10:y=main_h-overlay_h-10[b3];"
-            "[b3][h4]overlay=x=main_w-overlay_w-10:y=main_h-overlay_h-10[step];"
-            # caption fade in/out
-            "[step]drawtext="
-                "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
-                f"text='{wrapped}':fontcolor=white:fontsize=28:"
-                "box=1:boxcolor=black@0.6:boxborderw=10:"
-                "x=(w-text_w)/2:y=(h-text_h)/2:"
-                "enable='between(t,0,4)':"
-                "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
-            # even‐dim safeguard → [final]
-            "[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
-        )
+    # --- write that filtergraph to disk ---
+    fc_path = f"/tmp/{uuid.uuid4()}_fc.txt"
+    with open(fc_path, "w") as f:
+        f.write(fc)
 
-        # 1) download
-        subprocess.run([
-            "wget", "-q", "--header=User-Agent: Mozilla/5.0",
-            "-O", in_mp4, video_url
-        ], check=True)
+    # --- first ffmpeg pass: apply all filters + copy audio ---
+    cmd1 = [
+        "ffmpeg", "-y",
+        "-i", input_file,
+        "-i", watermark_choice,
+        "-filter_complex_script", fc_path,
+        "-map", "[final]",
+        "-map", "0:a?",                      # passthrough audio
+        "-r", str(framerate),
+        "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
+        "-b:v", "8M", "-maxrate", "8M", "-bufsize", "16M",
+        "-preset", "superfast",
+        "-c:v", "libx264",
+        "-c:a", "copy",                      # copy audio intact
+        "-metadata", "brand=thick_asian",
+        mid_file
+    ]
+    subprocess.run(cmd1, check=True)
 
-        # 2) first ffmpeg pass
-        cmd1 = [
-            "ffmpeg", "-y",
-            "-i", in_mp4,
-            "-i", wm_file,
-            *sum([["-i", p] for p in heart_inputs], []),
-            "-filter_complex", fc,
-            "-map", "[final]",
-            "-map", "0:a?",
-            "-r", str(fr),
-            "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
-            "-b:v", "8M", "-maxrate", "8M", "-bufsize", "16M",
-            "-preset", "ultrafast",
-            "-c:v", "libx264",
-            "-c:a", "copy",
-            "-metadata", metadata,
-            mid_mp4
-        ]
-        subprocess.run(cmd1, check=True)
+    # --- second ffmpeg pass: re-mux if you need to reattach metadata or fix containers ---
+    subprocess.run([
+        "ffmpeg", "-y",
+        "-i", mid_file,
+        "-map", "0:v",
+        "-map", "0:a?",
+        "-c", "copy",
+        "-metadata", "brand=thick_asian",
+        final_file
+    ], check=True)
 
-        # 3) strip metadata & chapters
-        subprocess.run([
-            "ffmpeg", "-y",
-            "-i", mid_mp4,
-            "-map_metadata", "-1",
-            "-map_chapters", "-1",
-            "-c:v", "copy",
-            "-c:a", "copy",
-            "-metadata", metadata,
-            out_mp4
-        ], check=True)
-
-        # 4) return
-        return send_file(out_mp4, as_attachment=True)
-
-    except subprocess.CalledProcessError as e:
-        stderr = e.stderr.decode() if getattr(e, "stderr", None) else str(e)
-        return {"error": f"FFmpeg failed:\n{stderr}"}, 500
-
-    except Exception as e:
-        return {"error": f"Unexpected error: {e}"}, 500
-
-    finally:
-        for p in (in_mp4, mid_mp4, out_mp4):
-            try: os.remove(p)
-            except: pass
+    # send it back
+    return send_file(final_file, as_attachment=True)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
