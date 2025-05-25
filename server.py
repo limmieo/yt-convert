@@ -9,8 +9,8 @@ app = Flask(__name__)
 
 BRANDS = {
     "thick_asian": {
-        "metadata":      "brand=thick_asian",
-        "lut":           "Cobi_3.CUBE",
+        "metadata": "brand=thick_asian",
+        "lut": "Cobi_3.CUBE",
         "watermarks": [
             "Thick_asian_watermark.png",
             "Thick_asian_watermark_2.png",
@@ -19,8 +19,8 @@ BRANDS = {
         "captions_file": "thick_asian_captions.txt"
     },
     "gym_baddie": {
-        "metadata":      "brand=gym_baddie",
-        "lut":           "Cobi_3.CUBE",
+        "metadata": "brand=gym_baddie",
+        "lut": "Cobi_3.CUBE",
         "watermarks": [
             "gym_baddie_watermark.png",
             "gym_baddie_watermark_2.png",
@@ -29,8 +29,8 @@ BRANDS = {
         "captions_file": "gym_baddie_captions.txt"
     },
     "polishedform": {
-        "metadata":      "brand=polishedform",
-        "lut":           None,
+        "metadata": "brand=polishedform",
+        "lut": None,
         "watermarks": [
             "polished_watermark.png",
             "polished_watermark_2.png",
@@ -50,6 +50,7 @@ def wrap_caption(caption, width=30):
 def process_video(brand):
     if brand not in BRANDS:
         return {"error": f"Unsupported brand '{brand}'."}, 400
+
     video_url = request.json.get('video_url')
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
@@ -77,57 +78,52 @@ def process_video(brand):
             lines = [l.strip() for l in f if l.strip()]
         wrapped = wrap_caption(random.choice(lines))
 
-        # 3) Random params for watermarks & timing
-        ob       = round(random.uniform(0.6, 0.7), 2)   # bounce opacity
-        os_      = round(random.uniform(0.85, 0.95), 2) # static opacity
-        ot       = round(random.uniform(0.4, 0.6), 2)   # scroll opacity
-        sb       = random.uniform(0.85, 1.0)            # bounce scale
-        ss       = random.uniform(1.1, 1.25)            # static scale
-        st       = random.uniform(0.9, 1.1)             # scroll scale
+        # 3) Random parameters for watermarks & timing
+        ob       = round(random.uniform(0.6, 0.7), 2)
+        os_      = round(random.uniform(0.85, 0.95), 2)
+        ot       = round(random.uniform(0.4, 0.6), 2)
+        sb       = random.uniform(0.85, 1.0)
+        ss       = random.uniform(1.1, 1.25)
+        st       = random.uniform(0.9, 1.1)
         fr       = round(random.uniform(29.87, 30.1), 3)
         dx       = round(random.uniform(20, 40), 2)
         dy       = round(random.uniform(20, 40), 2)
         delay_x  = round(random.uniform(0.2, 1.0), 2)
         delay_y  = round(random.uniform(0.2, 1.0), 2)
-        # stable center-top watermark
-        sc       = 1.2    # 120% size
-        oc       = 1.0    # full opacity
         lut_filt = f"lut3d='{lut_file}'," if lut_file else ""
 
-        # 4) filter_complex
+        # 4) Build filter_complex
         fc = (
-            "[1:v]split=4[wb][ws][wt][wc];"
+            # split watermark inputs
+            "[1:v]split=3[wb][ws][wt];"
             # bounce watermark
             f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,"
             f"colorchannelmixer=aa={ob}[bounce];"
-            # static bottom watermark
+            # static watermark
             f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,"
             f"colorchannelmixer=aa={os_}[static];"
-            # scrolling top watermark
+            # top watermark
             f"[wt]scale=iw*{st}:ih*{st},format=rgba,"
-            f"colorchannelmixer=aa={ot}[scroll];"
-            # stable center-top watermark
-            f"[wc]scale=iw*{sc}:ih*{sc},format=rgba,"
-            f"colorchannelmixer=aa={oc}[topcenter];"
-            # base video → slight timing shift, scale, LUT, 75px black border
+            f"colorchannelmixer=aa={ot}[top];"
+            # base video: slight desync, scale, LUT, 75px black border
             "[0:v]setpts=PTS+0.001/TB,"
             "scale=iw*0.98:ih*0.98,"
             f"{lut_filt}"
             "pad=iw+150:ih+150:75:75:color=black[padded];"
-            # 0) overlay center-top watermark
-            "[padded][topcenter]overlay="
-              "x=(main_w-w)/2:y=75[b0];"
-            # 1) overlay bounce inside inner frame
-            "[b0][bounce]overlay="
-              "x=75+abs(mod((t+{delay_x})*{dx},(main_w-150-w)*2)-(main_w-150-w)):"
-              "y=75+abs(mod((t+{delay_y})*{dy},(main_h-150-h)*2)-(main_h-150-h))[b1];"
-            # 2) overlay static bottom-center
+            # bold white border inside that 75px frame
+            "[padded]drawbox="
+              "x=75:y=75:w=iw-150:h=ih-150:"
+              "color=white@0.8:t=8[boxed];"
+            # 1st overlay: bouncing watermark bottom-right
+            "[boxed][bounce]overlay="
+              "x=main_w-w-20:y=main_h-h-20[b1];"
+            # 2nd overlay: static watermark bottom-center
             "[b1][static]overlay="
               "x=(main_w-w)/2:y=main_h-h-30[b2];"
-            # 3) overlay scrolling top
-            "[b2][scroll]overlay="
+            # 3rd overlay: top watermark scrolling right
+            "[b2][top]overlay="
               "x='mod(t*100,main_w+w)-w':y=20[step3];"
-            # 4) draw fading caption
+            # 4th: fading caption
             "[step3]drawtext="
               "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
               f"text='{wrapped}':"
@@ -136,20 +132,21 @@ def process_video(brand):
               "x=(w-text_w)/2:y=h*0.45:"
               "enable='between(t,0,4)':"
               "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
-            # 5) ENSURE minimum height 960 & even dimensions
+            # 5th: ensure minimum height 960 & even dims for H.264
             "[captioned]scale="
-              "'if(lt(ih,960),-2,trunc(iw/2)*2)':'if(lt(ih,960),960,trunc(ih/2)*2)'"
+              "'if(lt(ih,960),-2,trunc(iw/2)*2)':"
+              "'if(lt(ih,960),960,trunc(ih/2)*2)'"
               "[final]"
         )
 
-        # 5) encode
+        # 5) First-pass encode
         cmd = [
             "ffmpeg", "-y",
             "-i", in_mp4,
             "-i", wm_file,
             "-filter_complex", fc,
             "-map", "[final]",
-            "-map", "0:a?",            # passthrough original audio
+            "-map", "0:a?",             # passthrough audio
             "-r", str(fr),
             "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
             "-b:v", "8M", "-maxrate", "8M", "-bufsize", "16M",
@@ -163,7 +160,7 @@ def process_video(brand):
         ]
         subprocess.run(cmd, check=True)
 
-        # 6) strip metadata & chapters
+        # 6) Strip all metadata & chapters
         subprocess.run([
             "ffmpeg", "-y",
             "-i", mid_mp4,
@@ -187,5 +184,4 @@ def process_video(brand):
             except: pass
 
 if __name__ == "__main__":
-    # default to PORT=5000
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
