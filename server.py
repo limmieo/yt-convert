@@ -1,17 +1,16 @@
-from flask import Flask, request, send_file, jsonify
-import os
+from flask import Flask, request, send_file
 import subprocess
 import uuid
+import os
 import random
-import yaml
 
 app = Flask(__name__)
-UPLOAD_FOLDER = "/tmp"
-OUTPUT_FOLDER = "/tmp"
 
 BRANDS = {
     "thick_asian": {
+        "metadata": "brand=thick_asian",
         "lut": "Cobi_3.CUBE",
+        "scroll_speed": 80,
         "watermarks": [
             "Thick_asian_watermark.png",
             "Thick_asian_watermark_2.png",
@@ -20,7 +19,9 @@ BRANDS = {
         "captions_file": "thick_asian_captions.txt"
     },
     "gym_baddie": {
-        "lut": "GymBaddie_LUT.cube",
+        "metadata": "brand=gym_baddie",
+        "lut": "Cinematic_2.CUBE",
+        "scroll_speed": 120,
         "watermarks": [
             "gym_baddie_watermark.png",
             "gym_baddie_watermark_2.png"
@@ -28,69 +29,55 @@ BRANDS = {
         "captions_file": "gym_baddie_captions.txt"
     },
     "polishedform": {
-        "lut": "PF_LUT.cube",
+        "metadata": "brand=polishedform",
+        "lut": "Soft_Polish.CUBE",
+        "scroll_speed": 60,
         "watermarks": [
-            "pf_watermark_1.png",
-            "pf_watermark_2.png"
+            "polishedform_watermark.png"
         ],
-        "captions_file": "pf_captions.txt"
+        "captions_file": "polishedform_captions.txt"
     }
 }
 
-@app.route("/process/<brand>", methods=["POST"])
+@app.route('/process/<brand>', methods=['POST'])
 def process_video(brand):
     if brand not in BRANDS:
-        return jsonify({"error": "Invalid brand"}), 400
+        return f"Unknown brand: {brand}", 400
 
-    input_path = os.path.join(UPLOAD_FOLDER, f"{uuid.uuid4()}.mp4")
-    output_path = os.path.join(OUTPUT_FOLDER, f"{uuid.uuid4()}_mid.mp4")
-    file = request.files["video"]
-    file.save(input_path)
+    brand_config = BRANDS[brand]
 
-    brand_cfg = BRANDS[brand]
-    watermark = os.path.join("/opt/render/project/src/assets", random.choice(brand_cfg["watermarks"]))
-    captions_path = os.path.join("/opt/render/project/src/assets", brand_cfg["captions_file"])
-    lut_path = os.path.join("/opt/render/project/src/assets", brand_cfg["lut"])
+    video = request.files['video']
+    filename = f"/tmp/{uuid.uuid4()}.mp4"
+    video.save(filename)
 
-    # Read random caption
-    caption = "Default caption"
-    if os.path.exists(captions_path):
-        with open(captions_path, "r") as f:
-            lines = [line.strip() for line in f if line.strip()]
-            if lines:
-                caption = random.choice(lines)
+    watermark = random.choice(brand_config["watermarks"])
+    watermark_path = os.path.join("assets", watermark)
+    output_file = filename.replace(".mp4", "_mid.mp4")
+    caption_text = get_random_caption(brand_config["captions_file"])
+    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
-    # Construct FFmpeg command
     ffmpeg_cmd = [
-        "ffmpeg", "-y", "-i", input_path,
-        "-i", watermark,
+        "ffmpeg", "-y", "-i", filename,
+        "-i", watermark_path,
         "-filter_complex",
-        f"""
-        [0:v]hflip,scale=1080:1920,setsar=1,format=yuv420p[lut_input];
-        [lut_input]lut3d=file='{lut_path}'[base];
-        [1:v]format=rgba,scale=200:-1[wm];
-        [base][wm]overlay=W-w-30:H-h-30[watermarked];
-        color=c=black@0.7:s=1080x160:d=1[bar];
-        [watermarked][bar]overlay=0:0[with_bar];
-        [with_bar]drawtext=text='{caption}':fontcolor=white:fontsize=40:x=(w-text_w)/2:y=20:box=1:boxcolor=black@0:boxborderw=5
-        """,
-        "-map", "[with_bar]",
-        "-map", "0:a?", "-c:a", "copy",
-        "-c:v", "libx264", "-b:v", "10000k", "-preset", "veryfast",
-        "-movflags", "+faststart", output_path
+        f"[0:v]hflip,scale=1080:1920,setdar=9/16,format=yuv420p[lut];"
+        f"[lut]lut3d='{brand_config['lut']}'[base];"
+        f"[1:v]scale=200:40[wm];"
+        f"[base][wm]overlay=W-w-20:H-h-20[watermarked];"
+        f"[watermarked]drawtext=fontfile={font_path}:text='{caption_text}':x=(w-text_w)/2:y=50:fontcolor=white:fontsize=36:box=1:boxcolor=black@0.5:boxborderw=10",
+        "-c:v", "libx264", "-b:v", "10000k", "-preset", "faster", "-movflags", "+faststart",
+        "-c:a", "copy",
+        output_file
     ]
 
-    try:
-        subprocess.run(" ".join(ffmpeg_cmd), shell=True, check=True)
-    except subprocess.CalledProcessError as e:
-        print("FFmpeg failed:", e)
-        return jsonify({"error": "FFmpeg processing failed"}), 500
+    subprocess.run(ffmpeg_cmd, check=True)
+    return send_file(output_file, mimetype="video/mp4")
 
-    if not os.path.exists(output_path):
-        print("ERROR: Output file not created")
-        return jsonify({"error": "Output video missing"}), 500
+def get_random_caption(captions_file):
+    path = os.path.join("assets", captions_file)
+    with open(path, 'r', encoding='utf-8') as f:
+        lines = [line.strip() for line in f if line.strip()]
+    return random.choice(lines)
 
-    return send_file(output_path, as_attachment=True)
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+if __name__ == '__main__':
+    app.run(debug=False, host="0.0.0.0", port=10000)
