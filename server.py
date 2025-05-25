@@ -4,6 +4,7 @@ import os
 import uuid
 import random
 import requests
+import re
 
 app = Flask(__name__)
 
@@ -53,13 +54,16 @@ def process_video(brand):
 
     config = BRANDS[brand]
 
-    # Caption
+    # Safe caption handling
     caption = ""
     if os.path.exists(config["captions_file"]):
         with open(config["captions_file"], "r", encoding="utf-8") as f:
             lines = [line.strip() for line in f if line.strip()]
             if lines:
-                caption = random.choice(lines).replace(":", "\\:").replace("'", "\\'")
+                raw_caption = random.choice(lines)
+                safe_caption = re.sub(r'[^a-zA-Z0-9\s.,!?]', '', raw_caption)
+                caption = safe_caption.replace(":", "\\:").replace("'", "\\'")
+                print("Using caption:", caption)
 
     # Watermark
     selected_watermark = random.choice(config["watermarks"])
@@ -99,10 +103,10 @@ def process_video(brand):
     if has_watermark:
         filters.append(f"[{label}][1:v]overlay=W-w-10:H-h-10[outv]")
     else:
-        filters.append(f"[{label}]copy[outv]")
+        filters.append(f"[{label}]null[outv]")
 
     # FFmpeg Command
-    cmd = ["ffmpeg", "-y", "-i", input_path]
+    cmd = ["ffmpeg", "-y", "-loglevel", "debug", "-i", input_path]
     if has_watermark:
         cmd += ["-i", watermark_path]
 
