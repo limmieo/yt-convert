@@ -88,46 +88,33 @@ def process_video(brand):
         fr       = round(random.uniform(29.87, 30.1), 3)
         lut_filt = f"lut3d='{lut_file}'," if lut_file else ""
 
-        # 4) Build filter_complex
+        # 4) Build filter_complex with dynamic pad
         fc = (
-            # split watermark inputs
             "[1:v]split=3[wb][ws][wt];"
-            # bouncing watermark
             f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,colorchannelmixer=aa={ob}[bounce];"
-            # static watermark
             f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,colorchannelmixer=aa={os_}[static];"
-            # top watermark
             f"[wt]scale=iw*{st}:ih*{st},format=rgba,colorchannelmixer=aa={ot}[top];"
-            # base video: slight desync, scale down, LUT, 75px black border
-            "[0:v]setpts=PTS+0.001/TB,"
-            "scale=iw*0.98:ih*0.98,"
+            "[0:v]setpts=PTS+0.001/TB,scale=iw*0.98:ih*0.98,"
             f"{lut_filt}"
             "pad=iw+150:ih+150:75:75:color=black[padded];"
-            # bold white inner border
-            "[padded]drawbox="
-              "x=75:y=75:w=iw-150:h=ih-150:"
-              "color=white@0.8:t=8[boxed];"
-            # bouncing watermark bottom-right
-            "[boxed][bounce]overlay="
-              "x=main_w-w-20:y=main_h-h-20[b1];"
-            # static watermark bottom-center
-            "[b1][static]overlay="
-              "x=(main_w-w)/2:y=main_h-h-30[b2];"
-            # top watermark scrolling right
-            "[b2][top]overlay="
-              "x='mod(t*100,main_w+w)-w':y=20[step3];"
-            # fading caption
+            "[padded]drawbox=x=75:y=75:w=iw-150:h=ih-150:color=white@0.8:t=8[boxed];"
+            "[boxed][bounce]overlay=x=main_w-w-20:y=main_h-h-20[b1];"
+            "[b1][static]overlay=x=(main_w-w)/2:y=main_h-h-30[b2];"
+            "[b2][top]overlay=x='mod(t*100,main_w+w)-w':y=20[step3];"
             "[step3]drawtext="
               "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
               f"text='{wrapped}':"
               "fontcolor=white:fontsize=28:"
               "box=1:boxcolor=black@0.6:boxborderw=10:"
               "x=(w-text_w)/2:y=h*0.45:"
-              "enable='between(t,0,4)':"
-              "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
-            # ensure at least 960px height, centered in black bars
-            "[captioned]pad=iw:960:(ow-iw)/2:(960-ih)/2:color=black[padded2];"
-            # enforce even dims for H.264
+              "enable='between(t,0,4)':alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
+            # --- DYNAMIC PAD TO AT LEAST 960px HEIGHT ---
+            "[captioned]pad=iw:"
+              "if(lt(ih\\,960)\\,960\\,ih):"
+              "(ow-iw)/2:"
+              "if(lt(ih\\,960)\\,(960-ih)/2\\,0):"
+              "color=black[padded2];"
+            # --- ENFORCE EVEN DIMENSIONS & OUTPUT ---
             "[padded2]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
@@ -171,7 +158,6 @@ def process_video(brand):
     except Exception as e:
         return {"error": f"Unexpected error: {e}"}, 500
     finally:
-        # remove only the download + mid files—leave out_mp4 alive for streaming
         for fpath in (in_mp4, mid_mp4):
             try: os.remove(fpath)
             except: pass
