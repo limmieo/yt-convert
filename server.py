@@ -7,139 +7,97 @@ import textwrap
 
 app = Flask(__name__)
 
-BRANDS = {
-    "thick_asian": {
-        "metadata": "brand=thick_asian",
-        "lut": "Cobi_3.CUBE",
-        "watermarks": [
-            "Thick_asian_watermark.png",
-            "Thick_asian_watermark_2.png",
-            "Thick_asian_watermark_3.png"
-        ],
-        "captions_file": "thick_asian_captions.txt"
-    },
-    "gym_baddie": {
-        "metadata": "brand=gym_baddie",
-        "lut": "Cobi_3.CUBE",
-        "watermarks": [
-            "gym_baddie_watermark.png",
-            "gym_baddie_watermark_2.png",
-            "gym_baddie_watermark_3.png"
-        ],
-        "captions_file": "gym_baddie_captions.txt"
-    },
-    "polishedform": {
-        "metadata": "brand=polishedform",
-        "lut": None,
-        "watermarks": [
-            "polished_watermark.png",
-            "polished_watermark_2.png",
-            "polished_watermark_3.png"
-        ],
-        "captions_file": "polishedform_captions.txt"
-    }
-}
-
 def wrap_caption(caption, width=30):
     lines = textwrap.wrap(caption, width)
     if len(lines) > 2:
         lines = [" ".join(lines[:-1]), lines[-1]]
     return "\\n".join(lines)
 
-@app.route('/process/<brand>', methods=['POST'])
-def process_video(brand):
-    if brand not in BRANDS:
-        return {"error": f"Unsupported brand '{brand}'."}, 400
-
+@app.route('/process/thick_asian', methods=['POST'])
+def process_video():
     video_url = request.json.get('video_url')
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
 
-    in_mp4  = f"/tmp/{uuid.uuid4()}.mp4"
-    mid_mp4 = f"/tmp/{uuid.uuid4()}_mid.mp4"
-    out_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
+    # temp file paths
+    in_mp4    = f"/tmp/{uuid.uuid4()}.mp4"
+    mid_mp4   = f"/tmp/{uuid.uuid4()}_mid.mp4"
+    final_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
 
     try:
-        cfg      = BRANDS[brand]
-        metadata = cfg["metadata"]
-        assets   = os.path.join(os.getcwd(), "assets")
-        wm_file  = os.path.join(assets, random.choice(cfg["watermarks"]))
-        lut_file = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
-        captions = os.path.join(assets, cfg["captions_file"])
+        assets      = os.path.join(os.getcwd(), "assets")
+        watermark   = os.path.join(assets, random.choice([
+            "Thick_asian_watermark.png",
+            "Thick_asian_watermark_2.png",
+            "Thick_asian_watermark_3.png"
+        ]))
+        lut_path    = os.path.join(assets, "Cobi_3.CUBE")
+        captions    = os.path.join(assets, "thick_asian_captions.txt")
+        metadata_tag = "brand=thick_asian"
 
-        # Download
+        # 1) download the source
         subprocess.run([
-            "wget", "-q", "--header=User-Agent: Mozilla/5.0",
+            "wget", "-q", "--header=User-Agent:Mozilla/5.0",
             "-O", in_mp4, video_url
         ], check=True)
 
-        # pick & wrap a caption
+        # 2) pick & wrap a caption
         with open(captions, encoding="utf-8") as f:
-            lines = [l.strip() for l in f if l.strip()]
-        wrapped = wrap_caption(random.choice(lines))
+            pool = [l.strip() for l in f if l.strip()]
+        caption = wrap_caption(random.choice(pool))
 
-        # watermark params
-        ob  = round(random.uniform(0.6, 0.7), 2)
-        os_ = round(random.uniform(0.85, 0.95), 2)
-        ot  = round(random.uniform(0.4, 0.6), 2)
-        sb  = random.uniform(0.85, 1.0)
-        ss  = random.uniform(1.1, 1.25)
-        st  = random.uniform(0.9, 1.1)
-        fr  = round(random.uniform(29.87, 30.1), 3)
+        # 3) randomize visual params
+        ob    = round(random.uniform(0.6, 0.7), 2)
+        os_   = round(random.uniform(0.85, 0.95), 2)
+        ot    = round(random.uniform(0.4, 0.6), 2)
+        sb    = random.uniform(0.85, 1.0)
+        ss    = random.uniform(1.1, 1.25)
+        st    = random.uniform(0.9, 1.1)
+        fr    = round(random.uniform(29.87, 30.1), 3)
 
-        # if thick_asian, choose one of three hearts
-        heart_input = None
-        if brand == "thick_asian":
-            heart_file = random.choice(["heart_1.png","heart_2.png","heart_3.png"])
-            heart_input = os.path.join(assets, heart_file)
+        # 4) pick a heart and scale it to 256×256 before overlay
+        heart_input = os.path.join(
+            assets,
+            random.choice(["heart_1.png","heart_2.png","heart_3.png"])
+        )
 
-        # build the common filter_complex prefix
-        lut_filter = f"lut3d='{lut_file}'," if lut_file else ""
+        # 5) assemble the complex filter
         fc = (
             "[1:v]split=3[wb][ws][wt];"
-            f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,colorchannelmixer=aa={ob}[bounce];"
-            f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,colorchannelmixer=aa={os_}[static];"
-            f"[wt]scale=iw*{st}:ih*{st},format=rgba,colorchannelmixer=aa={ot}[top];"
+              f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,colorchannelmixer=aa={ob}[bounce];"
+              f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,colorchannelmixer=aa={os_}[static];"
+              f"[wt]scale=iw*{st}:ih*{st},format=rgba,colorchannelmixer=aa={ot}[top];"
+
             "[0:v]hflip,setpts=PTS+0.001/TB,"
-            "scale=iw*0.98:ih*0.98,"
-            "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
-            f"{lut_filter}"
-            "pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
-            "eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
+              "scale=iw*0.98:ih*0.98,"
+              "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
+              f"lut3d='{lut_path}',"
+              "pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
+              "eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
+
             "[base][bounce]overlay=x=main_w-w-40:y=main_h-h-80[b1];"
             "[b1][static]overlay=x=(main_w-w)/2:y=main_h-h-20[b2];"
             "[b2][top]overlay=x=main_w-w-50:y=60[b3];"
+
             "[b3]drawtext="
-            "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
-            f"text='{wrapped}':"
-            "fontcolor=white:fontsize=28:"
-            "box=1:boxcolor=black@0.6:boxborderw=10:"
-            "x=(w-text_w)/2:y=h*0.45:enable='between(t,0,4)':"
-            "alpha='if(lt(t,3),1,1-(t-3))'[captioned]"
+              "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
+              f"text='{caption}':"
+              "fontcolor=white:fontsize=28:box=1:boxcolor=black@0.6:boxborderw=10:"
+              "x=(w-text_w)/2:y=h*0.45:enable='between(t,0,4)':"
+              "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
+
+            # force even dims, then scale down the heart
+            "[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[scaled];"
+            "[2:v]scale=256:256[heart];"
+            "[scaled][heart]overlay=10:10:shortest=1[final]"
         )
 
-        # now append the final scale and (optional) heart overlay
-        if heart_input:
-            # third input (index 2) is the heart PNG
-            fc += (
-                ";[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[scaled];"
-                "[scaled][2:v]overlay=10:10:shortest=1[final]"
-            )
-        else:
-            fc += (
-                ";[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
-            )
-
-        # build ffmpeg command
+        # 6) run ffmpeg (capture stderr so we can debug if it fails)
         cmd = [
             "ffmpeg", "-y",
             "-i", in_mp4,
-            "-i", wm_file,
-        ]
-        if heart_input:
-            cmd += ["-i", heart_input]
-
-        cmd += [
+            "-i", watermark,
+            "-i", heart_input,
             "-filter_complex", fc,
             "-map", "[final]",
             "-map", "0:a?",
@@ -147,16 +105,15 @@ def process_video(brand):
             "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
             "-b:v", "8M", "-maxrate", "8M", "-bufsize", "16M",
             "-preset", "ultrafast",
-            "-threads", "0",
             "-t", "40",
             "-c:v", "libx264",
             "-c:a", "copy",
-            "-metadata", metadata,
+            "-metadata", metadata_tag,
             mid_mp4
         ]
-        subprocess.run(cmd, check=True)
+        subprocess.run(cmd, check=True, stderr=subprocess.PIPE)
 
-        # strip metadata & chapters
+        # 7) strip all metadata/chapters for final output
         subprocess.run([
             "ffmpeg", "-y",
             "-i", mid_mp4,
@@ -164,19 +121,19 @@ def process_video(brand):
             "-map_chapters", "-1",
             "-c:v", "copy",
             "-c:a", "copy",
-            "-metadata", metadata,
-            out_mp4
-        ], check=True)
+            "-metadata", metadata_tag,
+            final_mp4
+        ], check=True, stderr=subprocess.PIPE)
 
-        return send_file(out_mp4, as_attachment=True)
+        return send_file(final_mp4, as_attachment=True)
 
     except subprocess.CalledProcessError as e:
-        return {"error": f"FFmpeg failed:\n{e.stderr.decode()}"}, 500
-    except Exception as e:
-        return {"error": f"Unexpected error: {e}"}, 500
+        err = e.stderr.decode(errors="ignore")
+        return {"error": "FFmpeg failed:\n" + err}, 500
+
     finally:
-        for p in (in_mp4, mid_mp4, out_mp4):
-            try: os.remove(p)
+        for f in (in_mp4, mid_mp4, final_mp4):
+            try: os.remove(f)
             except: pass
 
 if __name__ == "__main__":
