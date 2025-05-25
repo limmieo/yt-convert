@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# PUSH: fix overlay y → main_h-h-5 | 2025-05-25
+# PUSH: enforce even dims → 2025-05-25
 
 from flask import Flask, request, send_file
 import subprocess
@@ -97,7 +97,7 @@ def process_video(brand):
 
         lut_filter = f"lut3d='{lut_file}'," if lut_file else ""
 
-        # filter_complex with corrected y=main_h-h-5
+        # build filter_complex (with fixed scale & final-even dims)
         fc = (
             "[1:v]split=3[wb][ws][wt];"
             f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,colorchannelmixer=aa={ob}[bounce];"
@@ -105,20 +105,19 @@ def process_video(brand):
             f"[wt]scale=iw*{st}:ih*{st},format=rgba,colorchannelmixer=aa={ot}[top];"
 
             "[0:v]hflip,setpts=PTS+0.001/TB,"
-                "scale=iw*0.98:ih*0.98,"
-                "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
-                f"{lut_filter}"
-                "pad=iw:ih+90:0:45:black,"
-                "eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
+            # **make initial scale even**
+            "scale='trunc(iw*0.98/2)*2:trunc(ih*0.98/2)*2',"
+            "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
+            f"{lut_filter}"
+            # 45px bars top & bottom
+            "pad=iw:ih+90:0:45:black,"
+            "eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
 
-            # bounce watermark at bottom-right
             "[base][bounce]overlay=x=main_w-w-40:y=main_h-h-5[b1];"
-            # static watermark centered on bottom bar
             "[b1][static]overlay=x=(main_w-w)/2:y=main_h-h-5[b2];"
-            # top watermark in the top bar
             "[b2][top]overlay=x=main_w-w-50:y=45[b3];"
 
-            # caption block
+            # caption
             "[b3]drawtext="
                 "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
                 f"text='{wrapped}':fontcolor=white:fontsize=28:"
@@ -127,7 +126,7 @@ def process_video(brand):
                 "enable='between(t,0,4)':"
                 "alpha='if(lt(t,3),1,1-(t-3))'[cap];"
 
-            # corner emojis
+            # four fading hearts
             f"[cap]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
                 f"text='{corners[0]}':fontcolor=white:fontsize=32:x=30:y=30[h1];"
             "[h1]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
@@ -135,10 +134,12 @@ def process_video(brand):
             "[h2]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
                 f"text='{corners[2]}':fontcolor=white:fontsize=32:x=30:y=h-text_h-30[h3];"
             "[h3]drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
-                f"text='{corners[3]}':fontcolor=white:fontsize=32:x=w-text_w-30:y=h-text_h-30[final]"
+                f"text='{corners[3]}':fontcolor=white:fontsize=32:x=w-text_w-30:y=h-text_h-30[tmp];"
+            # **final even‐size safeguard**
+            "[tmp]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
-        # fast first pass
+        # first pass
         cmd = [
             "ffmpeg", "-y",
             "-i", in_mp4,
@@ -159,7 +160,7 @@ def process_video(brand):
         ]
         subprocess.run(cmd, check=True)
 
-        # strip metadata & chapters
+        # strip metadata
         subprocess.run([
             "ffmpeg", "-y",
             "-i", mid_mp4,
