@@ -7,7 +7,6 @@ import requests
 
 app = Flask(__name__)
 
-# Define brand settings
 BRANDS = {
     "thick_asian": {
         "lut": "Cobi_3.CUBE",
@@ -40,7 +39,6 @@ def process_video(brand):
     if not video_url:
         return "Missing video_url", 400
 
-    # Save the video to disk
     input_path = f"/tmp/{uuid.uuid4()}.mp4"
     output_path = f"/tmp/{uuid.uuid4()}.mp4"
 
@@ -54,37 +52,57 @@ def process_video(brand):
         return f"Failed to download video: {str(e)}", 500
 
     config = BRANDS[brand]
-    filters = []
 
-    # Load caption
-    caption = None
+    caption = ""
     if os.path.exists(config["captions_file"]):
         with open(config["captions_file"], "r", encoding="utf-8") as f:
             lines = [line.strip() for line in f if line.strip()]
             if lines:
-                caption = random.choice(lines)
+                caption = random.choice(lines).replace(":", "\\:").replace("'", "\\'")
 
-    if caption:
-        caption_escaped = caption.replace(":", '\\:').replace("'", "\\'")
-        filters.append(
-            f"drawtext=text='{caption_escaped}':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=50:box=1:boxcolor=black@0.6"
-        )
-
-    # Watermark
     selected_watermark = random.choice(config["watermarks"])
     watermark_path = os.path.join("watermarks", selected_watermark)
     has_watermark = os.path.exists(watermark_path)
 
-    cmd = ["ffmpeg", "-y", "-i", input_path]
+    apply_flip_v = random.choice([True, False])
+    apply_flip_h = random.choice([True, False])
+    apply_lut = os.path.exists(config["lut"])
+    lut_path = config["lut"]
+
+    filters = []
+    input_labels = ["[0:v]"]
 
     if has_watermark:
-        cmd += ["-i", watermark_path]
-        filters.append("overlay=W-w-10:H-h-10")
+        input_labels.append("[1:v]")
 
-    if filters:
-        cmd += ["-filter_complex", ";".join(filters)]
+    label = "[v0]"
+    filters.append(f"{input_labels[0]}scale=w=1080:h=-1:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black{label}")
+
+    if apply_flip_v:
+        filters.append(f"{label}vflip[v1]")
+        label = "[v1]"
+    if apply_flip_h:
+        filters.append(f"{label}hflip[v2]")
+        label = "[v2]"
+    if apply_lut:
+        filters.append(f"{label}lut3d=file='{lut_path}'[v3]")
+        label = "[v3]"
+    if caption:
+        filters.append(f"{label}drawtext=text='{caption}':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=50:box=1:boxcolor=black@0.6[v4]")
+        label = "[v4]"
+    if has_watermark:
+        filters.append(f"{label}[1:v]overlay=W-w-10:H-h-10[outv]")
+    else:
+        filters.append(f"{label}[outv]")
+
+    cmd = ["ffmpeg", "-y", "-i", input_path]
+    if has_watermark:
+        cmd += ["-i", watermark_path]
 
     cmd += [
+        "-filter_complex", ";".join(filters),
+        "-map", "[outv]",
+        "-map", "0:a?",  # keep original audio if available
         "-c:v", "libx264",
         "-crf", "18",
         "-preset", "fast",
@@ -97,7 +115,7 @@ def process_video(brand):
         subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return send_file(output_path, as_attachment=True)
     except subprocess.CalledProcessError as e:
-        return f"FFmpeg error: {e.stderr.decode()}", 500
+        return f"FFmpeg error:\n{e.stderr.decode()}", 500
     finally:
         if os.path.exists(input_path):
             os.remove(input_path)
