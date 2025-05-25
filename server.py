@@ -140,7 +140,7 @@ def process_video(brand):
             "-r", str(fr),
             "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
             "-b:v", "8M", "-maxrate", "8M", "-bufsize", "16M",
-            "-preset", "fast",
+            "-preset", "very fast",
             "-threads", "0",
             "-t", "40",
             "-c:v", "libx264",
