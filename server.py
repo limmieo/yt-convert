@@ -7,7 +7,6 @@ import yaml
 
 app = Flask(__name__)
 
-# Load brand config from YAML
 with open("config/brands.yaml", "r") as f:
     BRANDS = yaml.safe_load(f)
 
@@ -24,14 +23,12 @@ def process_video(brand):
     input_path = f"/tmp/{tmp_id}.mp4"
     output_path = f"/tmp/{tmp_id}_mid.mp4"
 
-    # Download video
     subprocess.run(["curl", "-L", "-o", input_path, video_url], check=True)
 
     watermark_path = os.path.join("assets", random.choice(brand_config["watermarks"]))
     captions_file = os.path.join("assets", brand_config["captions_file"])
     lut_path = os.path.join("assets", brand_config.get("lut", ""))
 
-    # Pick a random caption
     try:
         with open(captions_file, "r", encoding="utf-8") as f:
             captions = [line.strip() for line in f if line.strip()]
@@ -39,34 +36,33 @@ def process_video(brand):
     except Exception:
         caption = ""
 
+    # Base filters
     vf_filters = [
-        "hflip",
-        f"drawtext=text='{caption}':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=30:borderw=2",
-        f"movie='{watermark_path}' [watermark]; [in][watermark] overlay=W-w-20:H-h-20"
+        f"drawtext=text='{caption}':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=40:box=1:boxcolor=black@0.5:boxborderw=10",
+        f"movie='{watermark_path}' [wm]; [in][wm] overlay=W-w-20:H-h-20 [out]"
     ]
 
-    # Try LUT filter, skip if broken
+    # LUT check
     if brand_config.get("lut"):
         try:
-            test_lut = subprocess.run(
-                ["ffmpeg", "-hide_banner", "-v", "error", "-f", "lavfi", "-i", f"color=black:size=1x1", "-vf", f"lut3d='{lut_path}'", "-frames:v", "1", "-f", "null", "-"],
-                capture_output=True
+            subprocess.run(
+                ["ffmpeg", "-f", "lavfi", "-i", "nullsrc", "-vf", f"lut3d='{lut_path}'", "-frames:v", "1", "-f", "null", "-"],
+                capture_output=True, check=True
             )
-            if test_lut.returncode == 0:
-                vf_filters.append(f"lut3d='{lut_path}'")
+            vf_filters.insert(0, f"lut3d='{lut_path}'")
         except Exception:
             pass
-
-    vf = ",".join(vf_filters)
 
     ffmpeg_command = [
         "ffmpeg", "-y",
         "-i", input_path,
-        "-vf", vf,
+        "-filter_complex", ",".join(vf_filters),
+        "-map", "[out]",
+        "-map", "0:a?",
         "-c:v", "libx264",
         "-preset", "fast",
         "-b:v", "10000k",
-        "-c:a", "copy",
+        "-c:a", "aac",
         "-movflags", "+faststart",
         output_path
     ]
@@ -75,9 +71,7 @@ def process_video(brand):
         subprocess.run(ffmpeg_command, check=True)
         return send_file(output_path, mimetype="video/mp4")
     except subprocess.CalledProcessError as e:
-        return jsonify({"error": "FFmpeg processing failed", "detail": str(e)}), 500
-    except Exception as e:
-        return jsonify({"error": "Unexpected error", "detail": str(e)}), 500
+        return jsonify({"error": "FFmpeg failed", "detail": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
