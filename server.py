@@ -136,8 +136,10 @@ def process_video(brand):
               "x=(w-text_w)/2:y=h*0.45:"
               "enable='between(t,0,4)':"
               "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
-            # 5) force even dimensions
-            "[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
+            # 5) ENSURE minimum height 960 & even dimensions
+            "[captioned]scale="
+              "'if(lt(ih,960),-2,trunc(iw/2)*2)':'if(lt(ih,960),960,trunc(ih/2)*2)'"
+              "[final]"
         )
 
         # 5) encode
@@ -185,4 +187,5 @@ def process_video(brand):
             except: pass
 
 if __name__ == "__main__":
+    # default to PORT=5000
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
