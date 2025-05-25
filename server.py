@@ -60,7 +60,6 @@ def process_video(brand):
 
     in_mp4 = f"/tmp/{uuid.uuid4()}.mp4"
     mid_mp4 = f"/tmp/{uuid.uuid4()}_mid.mp4"
-    out_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
 
     try:
         cfg = BRANDS[brand]
@@ -140,21 +139,10 @@ def process_video(brand):
         ]
         subprocess.run(cmd, check=True)
 
-        subprocess.run([
-            "ffmpeg", "-y",
-            "-i", mid_mp4,
-            "-map_metadata", "-1",
-            "-map_chapters", "-1",
-            "-c:v", "copy",
-            "-c:a", "copy",
-            "-metadata", metadata,
-            out_mp4
-        ], check=True)
+        if not os.path.exists(mid_mp4):
+            return {"error": f"[DEBUG] mid_mp4 not created: {mid_mp4}"}, 500
 
-        if not os.path.exists(out_mp4):
-            return {"error": f"Output file not created: {out_mp4}"}, 500
-
-        return send_file(out_mp4, as_attachment=True)
+        return send_file(mid_mp4, as_attachment=True)
 
     except subprocess.CalledProcessError as e:
         return {"error": f"FFmpeg failed: {e}"}, 500
