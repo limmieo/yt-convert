@@ -1,4 +1,4 @@
-from flask import Flask, request, send_file
+from flask import Flask, request, Response
 import subprocess
 import uuid
 import os
@@ -142,7 +142,11 @@ def process_video(brand):
         if not os.path.exists(mid_mp4):
             return {"error": f"[DEBUG] mid_mp4 not created: {mid_mp4}"}, 500
 
-        return send_file(mid_mp4, as_attachment=True)
+        def stream_video(path):
+            with open(path, "rb") as f:
+                yield from f
+
+        return Response(stream_video(mid_mp4), mimetype="video/mp4")
 
     except subprocess.CalledProcessError as e:
         return {"error": f"FFmpeg failed: {e}"}, 500
