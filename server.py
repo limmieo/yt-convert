@@ -117,7 +117,7 @@ def process_video(brand):
               "x=(w-text_w)/2:y=h*0.45:"
               "enable='between(t,0,4)':"
               "alpha='if(lt(t,3),1,1-(t-3))',"
-              "scale=1080:1920"
+              "scale=1080:1920,setsar=1"
               "[final]"
         )
 
