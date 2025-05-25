@@ -131,7 +131,7 @@ def process_video(brand):
             "-r", str(fr),
             "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
             "-b:v", "10M", "-maxrate", "10M", "-bufsize", "20M",
-            "-preset", "slow", "-profile:v", "high",
+            "-preset", "fast", "-profile:v", "high",
             "-t", "40",
             "-c:v", "libx264",
             "-c:a", "copy",
@@ -150,6 +150,9 @@ def process_video(brand):
             "-metadata", metadata,
             out_mp4
         ], check=True)
+
+        if not os.path.exists(out_mp4):
+            return {"error": f"Output file not created: {out_mp4}"}, 500
 
         return send_file(out_mp4, as_attachment=True)
 
