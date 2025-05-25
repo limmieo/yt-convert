@@ -60,54 +60,67 @@ def process_video(brand):
     out_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
 
     try:
-        cfg      = BRANDS[brand]
-        metadata = cfg["metadata"]
-        assets   = os.path.join(os.getcwd(), "assets")
-        wm_file  = os.path.join(assets, random.choice(cfg["watermarks"]))
-        lut_file = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
-        captions = os.path.join(assets, cfg["captions_file"])
+        cfg       = BRANDS[brand]
+        metadata  = cfg["metadata"]
+        assets    = os.path.join(os.getcwd(), "assets")
+        wm_file   = os.path.join(assets, random.choice(cfg["watermarks"]))
+        lut_file  = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
+        caps_file = os.path.join(assets, cfg["captions_file"])
 
-        # Download
+        # 1) Download source
         subprocess.run([
             "wget", "-q", "--header=User-Agent: Mozilla/5.0",
             "-O", in_mp4, video_url
         ], check=True)
 
-        # Pick & wrap a caption
-        with open(captions, encoding="utf-8") as f:
+        # 2) Pick & wrap a random caption
+        with open(caps_file, encoding="utf-8") as f:
             lines = [l.strip() for l in f if l.strip()]
         wrapped = wrap_caption(random.choice(lines))
 
-        # Random watermark parameters
-        ob  = round(random.uniform(0.6, 0.7), 2)
-        os_ = round(random.uniform(0.85, 0.95), 2)
-        ot  = round(random.uniform(0.4, 0.6), 2)
-        sb  = random.uniform(0.85, 1.0)
-        ss  = random.uniform(1.1, 1.25)
-        st  = random.uniform(0.9, 1.1)
-        fr  = round(random.uniform(29.87, 30.1), 3)
+        # 3) Random parameters for watermarks + timing
+        ob       = round(random.uniform(0.6, 0.7), 2)
+        os_      = round(random.uniform(0.85, 0.95), 2)
+        ot       = round(random.uniform(0.4, 0.6), 2)
+        sb       = random.uniform(0.85, 1.0)
+        ss       = random.uniform(1.1, 1.25)
+        st       = random.uniform(0.9, 1.1)
+        fr       = round(random.uniform(29.87, 30.1), 3)
+        dx       = round(random.uniform(20, 40), 2)
+        dy       = round(random.uniform(20, 40), 2)
+        delay_x  = round(random.uniform(0.2, 1.0), 2)
+        delay_y  = round(random.uniform(0.2, 1.0), 2)
+        lut_filt = f"lut3d='{lut_file}'," if lut_file else ""
 
-        lut_filter = f"lut3d='{lut_file}'," if lut_file else ""
-
-        # Build filter_complex
+        # 4) Build filter_complex
         fc = (
             "[1:v]split=3[wb][ws][wt];"
+            # bounce watermark
             f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,"
             f"colorchannelmixer=aa={ob}[bounce];"
+            # static watermark
             f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,"
             f"colorchannelmixer=aa={os_}[static];"
+            # top watermark
             f"[wt]scale=iw*{st}:ih*{st},format=rgba,"
             f"colorchannelmixer=aa={ot}[top];"
+            # base video: flip, slight desync, scale/crop, LUT, 30px border
             "[0:v]hflip,setpts=PTS+0.001/TB,"
             "scale=iw*0.98:ih*0.98,"
             "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
-            f"{lut_filter}"
-            "pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
-            "eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
-            "[base][bounce]overlay=x=main_w-w-40:y=main_h-h-80[b1];"
+            f"{lut_filt}"
+            "pad=iw+60:ih+60:30:30:color=black[padded];"
+            # 1st overlay: bouncing watermark
+            "[padded][bounce]overlay="
+            f"x='abs(mod((t+{delay_x})*{dx},(main_w-w)*2)-(main_w-w))':"
+            f"y='abs(mod((t+{delay_y})*{dy},(main_h-h)*2)-(main_h-h))'[b1];"
+            # 2nd overlay: static watermark at bottom center
             "[b1][static]overlay=x=(main_w-w)/2:y=main_h-h-20[b2];"
-            "[b2][top]overlay=x=main_w-w-50:y=60[b3];"
-            "[b3]drawtext="
+            # 3rd overlay: top watermark scrolling right
+            "[b2][top]overlay="
+            "x='mod(t*100,main_w+w)-w':y=20[step3];"
+            # 4th: draw a fading caption
+            "[step3]drawtext="
             "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
             f"text='{wrapped}':"
             "fontcolor=white:fontsize=28:"
@@ -115,22 +128,23 @@ def process_video(brand):
             "x=(w-text_w)/2:y=h*0.45:"
             "enable='between(t,0,4)':"
             "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
+            # 5th: force even dimensions for H.264
             "[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
-        # **First pass: use ultrafast + auto threads for speed**
+        # 5) First-pass encode: ultrafast, auto threads
         cmd = [
             "ffmpeg", "-y",
             "-i", in_mp4,
             "-i", wm_file,
             "-filter_complex", fc,
             "-map", "[final]",
-            "-map", "0:a?",
+            "-map", "0:a?",             # passthrough original audio if present
             "-r", str(fr),
             "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
             "-b:v", "8M", "-maxrate", "8M", "-bufsize", "16M",
-            "-preset", "ultrafast",   # ← much faster encoding
-            "-threads", "0",          # ← auto-detect CPU cores
+            "-preset", "ultrafast",
+            "-threads", "0",
             "-t", "40",
             "-c:v", "libx264",
             "-c:a", "copy",
@@ -139,7 +153,7 @@ def process_video(brand):
         ]
         subprocess.run(cmd, check=True)
 
-        # Strip metadata & chapters
+        # 6) Strip all metadata & chapters in a remux step
         subprocess.run([
             "ffmpeg", "-y",
             "-i", mid_mp4,
@@ -154,12 +168,13 @@ def process_video(brand):
         return send_file(out_mp4, as_attachment=True)
 
     except subprocess.CalledProcessError as e:
-        return {"error": f"FFmpeg failed:\n{e.stderr.decode()}"}, 500
+        return {"error": f"FFmpeg failed: {e}​"}, 500
     except Exception as e:
         return {"error": f"Unexpected error: {e}"}, 500
     finally:
-        for p in (in_mp4, mid_mp4, out_mp4):
-            try: os.remove(p)
+        # cleanup
+        for fpath in (in_mp4, mid_mp4, out_mp4):
+            try: os.remove(fpath)
             except: pass
 
 if __name__ == "__main__":
