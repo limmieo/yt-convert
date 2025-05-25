@@ -1,17 +1,17 @@
-from flask import Flask, request, Response
+from flask import Flask, request, send_file, jsonify
+import os
 import subprocess
 import uuid
-import os
 import random
-import textwrap
+import yaml
 
 app = Flask(__name__)
+UPLOAD_FOLDER = "/tmp"
+OUTPUT_FOLDER = "/tmp"
 
 BRANDS = {
     "thick_asian": {
-        "metadata": "brand=thick_asian",
         "lut": "Cobi_3.CUBE",
-        "scroll_speed": 80,
         "watermarks": [
             "Thick_asian_watermark.png",
             "Thick_asian_watermark_2.png",
@@ -20,142 +20,77 @@ BRANDS = {
         "captions_file": "thick_asian_captions.txt"
     },
     "gym_baddie": {
-        "metadata": "brand=gym_baddie",
-        "lut": "Cobi_3.CUBE",
-        "scroll_speed": 120,
+        "lut": "GymBaddie_LUT.cube",
         "watermarks": [
             "gym_baddie_watermark.png",
-            "gym_baddie_watermark_2.png",
-            "gym_baddie_watermark_3.png"
+            "gym_baddie_watermark_2.png"
         ],
         "captions_file": "gym_baddie_captions.txt"
     },
     "polishedform": {
-        "metadata": "brand=polishedform",
-        "lut": None,
-        "scroll_speed": 80,
+        "lut": "PF_LUT.cube",
         "watermarks": [
-            "polished_watermark.png",
-            "polished_watermark_2.png",
-            "polished_watermark_3.png"
+            "pf_watermark_1.png",
+            "pf_watermark_2.png"
         ],
-        "captions_file": "polishedform_captions.txt"
+        "captions_file": "pf_captions.txt"
     }
 }
 
-def wrap_caption(caption, width=30):
-    lines = textwrap.wrap(caption, width)
-    if len(lines) > 2:
-        lines = [" ".join(lines[:-1]), lines[-1]]
-    return "\\n".join(lines)
-
-@app.route('/process/<brand>', methods=['POST'])
+@app.route("/process/<brand>", methods=["POST"])
 def process_video(brand):
     if brand not in BRANDS:
-        return {"error": f"Unsupported brand '{brand}'."}, 400
+        return jsonify({"error": "Invalid brand"}), 400
 
-    video_url = request.json.get('video_url')
-    if not video_url:
-        return {"error": "Missing video_url in request."}, 400
+    input_path = os.path.join(UPLOAD_FOLDER, f"{uuid.uuid4()}.mp4")
+    output_path = os.path.join(OUTPUT_FOLDER, f"{uuid.uuid4()}_mid.mp4")
+    file = request.files["video"]
+    file.save(input_path)
 
-    in_mp4 = f"/tmp/{uuid.uuid4()}.mp4"
-    mid_mp4 = f"/tmp/{uuid.uuid4()}_mid.mp4"
+    brand_cfg = BRANDS[brand]
+    watermark = os.path.join("/opt/render/project/src/assets", random.choice(brand_cfg["watermarks"]))
+    captions_path = os.path.join("/opt/render/project/src/assets", brand_cfg["captions_file"])
+    lut_path = os.path.join("/opt/render/project/src/assets", brand_cfg["lut"])
+
+    # Read random caption
+    caption = "Default caption"
+    if os.path.exists(captions_path):
+        with open(captions_path, "r") as f:
+            lines = [line.strip() for line in f if line.strip()]
+            if lines:
+                caption = random.choice(lines)
+
+    # Construct FFmpeg command
+    ffmpeg_cmd = [
+        "ffmpeg", "-y", "-i", input_path,
+        "-i", watermark,
+        "-filter_complex",
+        f"""
+        [0:v]hflip,scale=1080:1920,setsar=1,format=yuv420p[lut_input];
+        [lut_input]lut3d=file='{lut_path}'[base];
+        [1:v]format=rgba,scale=200:-1[wm];
+        [base][wm]overlay=W-w-30:H-h-30[watermarked];
+        color=c=black@0.7:s=1080x160:d=1[bar];
+        [watermarked][bar]overlay=0:0[with_bar];
+        [with_bar]drawtext=text='{caption}':fontcolor=white:fontsize=40:x=(w-text_w)/2:y=20:box=1:boxcolor=black@0:boxborderw=5
+        """,
+        "-map", "[with_bar]",
+        "-map", "0:a?", "-c:a", "copy",
+        "-c:v", "libx264", "-b:v", "10000k", "-preset", "veryfast",
+        "-movflags", "+faststart", output_path
+    ]
 
     try:
-        cfg = BRANDS[brand]
-        metadata = cfg["metadata"]
-        assets = os.path.join(os.getcwd(), "assets")
-
-        wm_file = os.path.join(assets, random.choice(cfg["watermarks"]))
-        lut_file = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
-        captions = os.path.join(assets, cfg["captions_file"])
-
-        subprocess.run([
-            "wget", "-q", "--header=User-Agent: Mozilla/5.0",
-            "-O", in_mp4, video_url
-        ], check=True)
-
-        with open(captions, encoding="utf-8") as f:
-            lines = [l.strip() for l in f if l.strip()]
-        raw = random.choice(lines)
-        wrapped = wrap_caption(raw)
-        wrapped = wrapped.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'").replace('"', "")
-
-        ob = round(random.uniform(0.6, 0.7), 2)
-        os_ = round(random.uniform(0.85, 0.95), 2)
-        ot = round(random.uniform(0.4, 0.6), 2)
-        sb = random.uniform(0.85, 1.0)
-        ss = random.uniform(1.1, 1.25)
-        st = random.uniform(0.9, 1.1)
-        fr = round(random.uniform(29.87, 30.1), 3)
-
-        lut_filter = f"lut3d='{lut_file}'," if lut_file else ""
-
-        fc = (
-            f"[1:v]split=3[wb][ws][wt];"
-            f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,"
-              f"colorchannelmixer=aa={ob}[bounce];"
-            f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,"
-              f"colorchannelmixer=aa={os_}[static];"
-            f"[wt]scale=iw*{st}:ih*{st},format=rgba,"
-              f"colorchannelmixer=aa={ot}[top];"
-            f"[0:v]hflip,setpts=PTS+0.001/TB,"
-              "scale=iw*0.98:ih*0.98,"
-              "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
-              f"{lut_filter}"
-              "pad=ceil(iw/2)*2:ceil(ih/2)*2:(ow-iw)/2:(oh-ih)/2,"
-              "eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
-            "[base][bounce]overlay=x=main_w-w-40:y=main_h-h-80[b1];"
-            "[b1][static]overlay=x=(main_w-w)/2:y=main_h-h-20[b2];"
-            "[b2][top]overlay=x=main_w-w-50:y=60[b3];"
-            "[b3]drawtext="
-              "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
-              f"text='{wrapped}':"
-              "fontcolor=white:fontsize=28:"
-              "box=1:boxcolor=black@0.6:boxborderw=10:"
-              "x=(w-text_w)/2:y=h*0.45:"
-              "enable='between(t,0,4)':"
-              "alpha='if(lt(t,3),1,1-(t-3))',"
-              "scale=1080:1920,setsar=1"
-              "[final]"
-        )
-
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", in_mp4,
-            "-i", wm_file,
-            "-filter_complex", fc,
-            "-map", "[final]",
-            "-map", "0:a?",
-            "-r", str(fr),
-            "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
-            "-b:v", "10M", "-maxrate", "10M", "-bufsize", "20M",
-            "-preset", "fast", "-profile:v", "high",
-            "-t", "40",
-            "-c:v", "libx264",
-            "-c:a", "copy",
-            "-metadata", metadata,
-            mid_mp4
-        ]
-        subprocess.run(cmd, check=True)
-
-        if not os.path.exists(mid_mp4):
-            return {"error": f"[DEBUG] mid_mp4 not created: {mid_mp4}"}, 500
-
-        def stream_video(path):
-            with open(path, "rb") as f:
-                yield from f
-
-        return Response(stream_video(mid_mp4), mimetype="video/mp4")
-
+        subprocess.run(" ".join(ffmpeg_cmd), shell=True, check=True)
     except subprocess.CalledProcessError as e:
-        return {"error": f"FFmpeg failed: {e}"}, 500
-    except Exception as e:
-        return {"error": f"Unexpected error: {e}"}, 500
-    finally:
-        for p in (in_mp4, mid_mp4):
-            try: os.remove(p)
-            except: pass
+        print("FFmpeg failed:", e)
+        return jsonify({"error": "FFmpeg processing failed"}), 500
+
+    if not os.path.exists(output_path):
+        print("ERROR: Output file not created")
+        return jsonify({"error": "Output video missing"}), 500
+
+    return send_file(output_path, as_attachment=True)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=10000)
