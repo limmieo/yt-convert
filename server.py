@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# server.py — single‐endpoint, multi‐brand video processor
+# server.py — single-endpoint, multi-brand video processor
 # PUSH: enforce even dims → 2025-05-25
 
 from flask import Flask, request, send_file
@@ -58,7 +58,7 @@ def process_video(brand):
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
 
-    # temp file paths
+    # Temp files
     in_mp4  = f"/tmp/{uuid.uuid4()}.mp4"
     mid_mp4 = f"/tmp/{uuid.uuid4()}_mid.mp4"
     out_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
@@ -68,9 +68,10 @@ def process_video(brand):
         metadata = cfg["metadata"]
         assets   = os.path.join(os.getcwd(), "assets")
 
-        # pick your news‐style watermark
+        # pick your news-style watermark
         wm_file = os.path.join(assets, random.choice(cfg["watermarks"]))
-        # pick 4 hearts (with replacement)
+
+        # pick 4 corner hearts (with replacement)
         hearts = random.choices(HEART_IMGS, k=4)
         heart_inputs = [os.path.join(assets, h) for h in hearts]
 
@@ -83,34 +84,41 @@ def process_video(brand):
             lines = [l.strip() for l in f if l.strip()]
         wrapped = wrap_caption(random.choice(lines))
 
-        # random frame rate tweak
+        # slight random framerate tweak
         fr = round(random.uniform(29.87, 30.1), 3)
 
-        # build the filter_complex
-        fc = r"""
-        [1:v]scale=iw:-1,format=rgba,colorchannelmixer=aa=0.9[wm];
-        [2:v]scale=64:64,format=rgba,h1;
-        [3:v]scale=64:64,format=rgba,h2;
-        [4:v]scale=64:64,format=rgba,h3;
-        [5:v]scale=64:64,format=rgba,h4;
-        [0:v]hflip,setpts=PTS+0.001/TB,""" + lut_filter + r"""
-          pad=iw:ih+90:0:45:black,
-          eq=brightness=0.01:contrast=1.02:saturation=1.03[base];
-        [base][wm]overlay=x=0:y=(main_h-overlay_h)/2[b0];
-        [b0][h1]overlay=x=10:y=10[b1];
-        [b1][h2]overlay=x=main_w-overlay_w-10:y=10[b2];
-        [b2][h3]overlay=x=10:y=main_h-overlay_h-10[b3];
-        [b3][h4]overlay=x=main_w-overlay_w-10:y=main_h-overlay_h-10[step];
-        [step]drawtext=
-            fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:
-            text='""" + wrapped + r"""':
-            fontcolor=white:fontsize=28:
-            box=1:boxcolor=black@0.6:boxborderw=10:
-            x=(w-text_w)/2:y=(h-text_h)/2:
-            enable='between(t,0,4)':
-            alpha='if(lt(t,3),1,1-(t-3))'[captioned];
-        [captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]
-        """
+        # build the fixed filter_complex
+        fc = (
+            # news-style watermark across center
+            "[1:v]scale=iw:-1,format=rgba,colorchannelmixer=aa=0.9[wm];"
+            # scale each heart to 64×64 and label [h1]–[h4]
+            "[2:v]scale=64:64,format=rgba[h1];"
+            "[3:v]scale=64:64,format=rgba[h2];"
+            "[4:v]scale=64:64,format=rgba[h3];"
+            "[5:v]scale=64:64,format=rgba[h4];"
+            # video base: flip, pad black bars, eq, then to [base]
+            "[0:v]hflip,setpts=PTS+0.001/TB," +
+            lut_filter +
+            "pad=iw:ih+90:0:45:black,"
+            "eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
+            # overlay news watermark
+            "[base][wm]overlay=x=0:y=(main_h-overlay_h)/2[b0];"
+            # overlay corners
+            "[b0][h1]overlay=x=10:y=10[b1];"
+            "[b1][h2]overlay=x=main_w-overlay_w-10:y=10[b2];"
+            "[b2][h3]overlay=x=10:y=main_h-overlay_h-10[b3];"
+            "[b3][h4]overlay=x=main_w-overlay_w-10:y=main_h-overlay_h-10[step];"
+            # caption fade in/out
+            "[step]drawtext="
+                "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
+                f"text='{wrapped}':fontcolor=white:fontsize=28:"
+                "box=1:boxcolor=black@0.6:boxborderw=10:"
+                "x=(w-text_w)/2:y=(h-text_h)/2:"
+                "enable='between(t,0,4)':"
+                "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
+            # even‐dim safeguard → [final]
+            "[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
+        )
 
         # 1) download
         subprocess.run([
@@ -118,7 +126,7 @@ def process_video(brand):
             "-O", in_mp4, video_url
         ], check=True)
 
-        # 2) ffmpeg first pass
+        # 2) first ffmpeg pass
         cmd1 = [
             "ffmpeg", "-y",
             "-i", in_mp4,
@@ -138,7 +146,7 @@ def process_video(brand):
         ]
         subprocess.run(cmd1, check=True)
 
-        # 3) strip metadata/chapters
+        # 3) strip metadata & chapters
         subprocess.run([
             "ffmpeg", "-y",
             "-i", mid_mp4,
@@ -150,7 +158,7 @@ def process_video(brand):
             out_mp4
         ], check=True)
 
-        # return final file
+        # 4) return
         return send_file(out_mp4, as_attachment=True)
 
     except subprocess.CalledProcessError as e:
