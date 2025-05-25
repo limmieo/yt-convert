@@ -83,6 +83,7 @@ def process_video(brand):
     filters.append(
         f"[0:v]scale=1080:-2:force_original_aspect_ratio=decrease,"
         f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,"
+        f"fifo,"
         f"format=yuv420p[{label}]"
     )
 
@@ -114,7 +115,7 @@ def process_video(brand):
     cmd += [
         "-filter_complex", ";".join(filters),
         "-map", "[outv]",
-        "-map", "0:a?",  # Optional audio
+        "-map", "0:a?",
         "-c:v", "libx264",
         "-crf", "18",
         "-preset", "fast",
