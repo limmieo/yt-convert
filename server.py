@@ -1,4 +1,3 @@
-# GitHub: add-progress-bar-on-top-border
 from flask import Flask, request, send_file
 import subprocess
 import uuid
@@ -68,85 +67,113 @@ def process_video(brand):
         lut_file = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
         captions = os.path.join(assets, cfg["captions_file"])
 
-        # 1) Download source
+        # Download source video
         subprocess.run([
             "wget", "-q", "--header=User-Agent: Mozilla/5.0",
             "-O", in_mp4, video_url
         ], check=True)
 
-        # 2) Pick & wrap a caption
+        # Pick and wrap a caption
         with open(captions, encoding="utf-8") as f:
             lines = [l.strip() for l in f if l.strip()]
         wrapped = wrap_caption(random.choice(lines))
 
-        # 3) Random watermark params
+        # Random watermark parameters
         ob  = round(random.uniform(0.6, 0.7), 2)
         os_ = round(random.uniform(0.85, 0.95), 2)
         ot  = round(random.uniform(0.4, 0.6), 2)
-        sb  = random.uniform(0.85, 1.0)     # bounce scale
-        ss  = random.uniform(1.05, 1.25)    # static scale
-        st  = random.uniform(0.6, 0.75)     # top scale
+        sb  = random.uniform(0.85, 1.0)
+        ss  = random.uniform(1.1, 1.25)
+        st  = random.uniform(0.9, 1.1)
         fr  = round(random.uniform(29.87, 30.1), 3)
 
+        # LUT filter snippet if present
         lut_filter = f"lut3d='{lut_file}'," if lut_file else ""
 
-        # 4) Build filter_complex
-        #    – black pad: 30px left/right, 45px top/bottom
-        #    – scrolling top ticker (news-scroll)
-        #    – static + moving watermark
-        #    – caption fade-out + box
-        #    – draw dynamic progress bar (40s duration)
+        # Emoji-cycle expression (changes every 3s)
+        emoji_expr = (
+            "%{eif:mod(floor(t/3)\\,7)==0?'🥰':"
+            "mod(floor(t/3)\\,7)==1?'😍':"
+            "mod(floor(t/3)\\,7)==2?'😻':"
+            "mod(floor(t/3)\\,7)==3?'💌':"
+            "mod(floor(t/3)\\,7)==4?'💘':"
+            "mod(floor(t/3)\\,7)==5?'💝':'💗'}"
+        )
+
+        # Build the filter_complex
         fc = (
+            # watermark split + scales
             "[1:v]split=3[wb][ws][wt];"
-            # bouncing watermark
             f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,"
-            f"colorchannelmixer=aa={ob}[bounce];"
-            # static watermark
+              f"colorchannelmixer=aa={ob}[bounce];"
             f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,"
-            f"colorchannelmixer=aa={os_}[static];"
-            # top scrolling watermark
+              f"colorchannelmixer=aa={os_}[static];"
             f"[wt]scale=iw*{st}:ih*{st},format=rgba,"
-            f"colorchannelmixer=aa={ot}[top];"
-            # main video → flip + tiny timing shift
+              f"colorchannelmixer=aa={ot}[top];"
+
+            # base video distort + LUT + border
             "[0:v]hflip,setpts=PTS+0.001/TB,"
-            "scale=iw*0.98:ih*0.98,"
-            # centered crop for black framing
-            "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
-            # apply LUT if any
+              "scale=iw*0.98:ih*0.98,"
+              "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
             f"{lut_filter}"
-            # pad around: 30px L/R, 45px T/B, black
-            "pad=iw+60:ih+90:30:45:color=black[base];"
-            # overlay bouncing watermark (bottom-right)
+              "pad=iw+16:ih+16:(ow-iw)/2:(oh-ih)/2,"
+              "eq=brightness=0.01:contrast=1.02:saturation=1.03[base];"
+
+            # overlay watermarks
             "[base][bounce]overlay=x=main_w-w-40:y=main_h-h-80[b1];"
-            # overlay static watermark (centered bottom)
             "[b1][static]overlay=x=(main_w-w)/2:y=main_h-h-20[b2];"
-            # overlay top ticker (scrolling left-to-right)
-            #   ticker moves at speed so it loops every 5s
-            "[b2][top]overlay=x='mod(t*100,main_w+w)-w':y=0[b3];"
-            # draw progress bar: 5px tall, white@80%, top border at y=20px
-            "[b3]drawbox=x=0:y=20:w='t*iw/40':h=5:color=white@0.8:t=fill[bar];"
-            # captions (fade out after 3s)
-            "[bar]drawtext="
+            "[b2][top]   overlay=x=main_w-w-50:y=60[b3];"
+
+            # caption text
+            "[b3]drawtext="
               "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
               f"text='{wrapped}':"
               "fontcolor=white:fontsize=28:"
               "box=1:boxcolor=black@0.6:boxborderw=10:"
               "x=(w-text_w)/2:y=h*0.45:"
               "enable='between(t,0,4)':"
-              "alpha='if(lt(t,3),1,1-(t-3))'"
-            "[captioned];"
-            # force even dimensions
-            "[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
+              "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
+
+            # top-left emoji
+            "[captioned]drawtext="
+              "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
+              f"text='{emoji_expr}':"
+              "fontcolor=white:fontsize=32:"
+              "x=45:y=45[e1];"
+
+            # top-right emoji
+            "[e1]drawtext="
+              "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
+              f"text='{emoji_expr}':"
+              "fontcolor=white:fontsize=32:"
+              "x=w-text_w-45:y=45[e2];"
+
+            # bottom-left emoji
+            "[e2]drawtext="
+              "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
+              f"text='{emoji_expr}':"
+              "fontcolor=white:fontsize=32:"
+              "x=45:y=h-text_h-45[e3];"
+
+            # bottom-right emoji
+            "[e3]drawtext="
+              "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
+              f"text='{emoji_expr}':"
+              "fontcolor=white:fontsize=32:"
+              "x=w-text_w-45:y=h-text_h-45[e4];"
+
+            # final even-dims pass
+            "[e4]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
-        # 5) First pass → insert everything, ultrafast, copy audio
+        # First ffmpeg pass: fast encode, copy audio
         cmd = [
             "ffmpeg", "-y",
             "-i", in_mp4,
             "-i", wm_file,
             "-filter_complex", fc,
             "-map", "[final]",
-            "-map", "0:a?",   # copy audio if present
+            "-map", "0:a?",
             "-r", str(fr),
             "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
             "-b:v", "8M", "-maxrate", "8M", "-bufsize", "16M",
@@ -160,7 +187,7 @@ def process_video(brand):
         ]
         subprocess.run(cmd, check=True)
 
-        # 6) strip metadata & chapters  
+        # Strip metadata & chapters
         subprocess.run([
             "ffmpeg", "-y",
             "-i", mid_mp4,
@@ -175,9 +202,13 @@ def process_video(brand):
         return send_file(out_mp4, as_attachment=True)
 
     except subprocess.CalledProcessError as e:
-        return {"error": f"FFmpeg failed:\n{e.stderr.decode()}"}, 500
+        stderr = getattr(e, 'stderr', None)
+        msg = stderr.decode() if stderr else str(e)
+        return {"error": f"FFmpeg failed:\n{msg}"}, 500
+
     except Exception as e:
         return {"error": f"Unexpected error: {e}"}, 500
+
     finally:
         for p in (in_mp4, mid_mp4, out_mp4):
             try: os.remove(p)
