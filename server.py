@@ -48,6 +48,13 @@ def wrap_caption(caption, width=30):
         lines = [" ".join(lines[:-1]), lines[-1]]
     return "\\n".join(lines)
 
+def sanitize_caption(caption):
+    caption = caption.replace('\\', '\\\\')  # Escape backslashes first
+    caption = caption.replace("'", "\\'")
+    caption = caption.replace(":", "\\:")
+    caption = caption.replace('\n', '')
+    return caption
+
 # ─── Video Processing Endpoint ────────────────────────────────────────────────
 @app.route('/process/<brand>', methods=['POST'])
 def process_video(brand):
@@ -77,10 +84,10 @@ def process_video(brand):
             "-O", in_mp4, video_url
         ], check=True)
 
-        # 2) Pick & wrap a random caption
+        # 2) Pick, wrap, and sanitize a random caption
         with open(caps_file, encoding="utf-8") as f:
             lines = [l.strip() for l in f if l.strip()]
-        wrapped_caption = wrap_caption(random.choice(lines)).replace("'", "\\'")
+        wrapped_caption = sanitize_caption(wrap_caption(random.choice(lines)))
 
         # 3) Randomize watermark/LUT parameters
         ob       = round(random.uniform(0.6, 0.7), 2)
