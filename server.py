@@ -38,6 +38,16 @@ BRANDS = {
             "polished_watermark_3.png"
         ],
         "captions_file": "polishedform_captions.txt"
+    },
+    "asian_travel": {
+        "metadata": "brand=asian_travel",
+        "lut": None,
+        "watermarks": [
+            "asian_travel_watermark.png",
+            "asian_travel_watermark_2.png",
+            "asian_travel_watermark_3.png"
+        ],
+        "captions_file": "asian_travel_captions.txt"
     }
 }
 
@@ -65,6 +75,7 @@ def process_video(brand):
 
     in_mp4  = f"/tmp/{uuid.uuid4()}.mp4"
     mid_mp4 = f"/tmp/{uuid.uuid4()}_mid.mp4"
+    out_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
 
     try:
         cfg       = BRANDS[brand]
@@ -124,7 +135,7 @@ def process_video(brand):
             "[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
-        print("🎬 Running encode with ultrafast preset...")
+        print("🎬 Running first-pass encode...")
         subprocess.run([
             "ffmpeg", "-y", "-i", in_mp4, "-i", wm_file,
             "-filter_complex", fc,
@@ -140,8 +151,20 @@ def process_video(brand):
             mid_mp4
         ], check=True)
 
-        print(f"✅ Returning file: {mid_mp4}")
-        return send_file(mid_mp4, as_attachment=True)
+        print("🔁 Running remux...")
+        subprocess.run([
+            "ffmpeg", "-y", "-i", mid_mp4,
+            "-map_metadata", "-1", "-map_chapters", "-1",
+            "-c:v", "copy", "-c:a", "copy",
+            "-metadata", metadata,
+            out_mp4
+        ], check=True)
+
+        if not os.path.exists(out_mp4):
+            raise FileNotFoundError(f"Expected output file not found: {out_mp4}")
+
+        print(f"✅ Returning file: {out_mp4}")
+        return send_file(out_mp4, as_attachment=True)
 
     except subprocess.CalledProcessError as e:
         print(f"❌ FFmpeg failed: {e}")
@@ -150,7 +173,7 @@ def process_video(brand):
         print(f"❌ Unexpected error: {e}")
         return {"error": f"Unexpected error: {e}"}, 500
     finally:
-        for path in (in_mp4, mid_mp4):
+        for path in (in_mp4, mid_mp4, out_mp4):
             try: os.remove(path)
             except: pass
 
