@@ -120,8 +120,8 @@ def process_video(brand):
             f"text='{wrapped_caption}':"
             "fontcolor=white:fontsize=28:box=1:boxcolor=black@0.6:boxborderw=10:"
             "x=(w-text_w)/2:y=h*0.45:"
-            "enable='between(t\\,0\\,4)':"
-            "alpha='if(lt(t\\,3)\\,1\\,1-(t-3))'[captioned];"
+            "enable='between(t,0,4)':"
+            "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
             "[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
