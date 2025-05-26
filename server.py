@@ -42,20 +42,18 @@ BRANDS = {
 }
 
 def wrap_caption(caption, width=30):
-    """Ensure max two lines, wrap at `width` chars."""
     lines = textwrap.wrap(caption, width)
     if len(lines) > 2:
         lines = [" ".join(lines[:-1]), lines[-1]]
     return "\\n".join(lines)
 
 def sanitize_caption(caption):
-    caption = caption.replace('\\', '\\\\')  # Escape backslashes first
+    caption = caption.replace('\\', '\\\\')
     caption = caption.replace("'", "\\'")
     caption = caption.replace(":", "\\:")
     caption = caption.replace('\n', '')
     return caption
 
-# ─── Video Processing Endpoint ────────────────────────────────────────────────
 @app.route('/process/<brand>', methods=['POST'])
 def process_video(brand):
     if brand not in BRANDS:
@@ -65,7 +63,6 @@ def process_video(brand):
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
 
-    # Temp file paths
     in_mp4  = f"/tmp/{uuid.uuid4()}.mp4"
     mid_mp4 = f"/tmp/{uuid.uuid4()}_mid.mp4"
     out_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
@@ -78,18 +75,15 @@ def process_video(brand):
         lut_file  = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
         caps_file = os.path.join(assets, cfg["captions_file"])
 
-        # 1) Download source clip
         subprocess.run([
             "wget", "-q", "--header=User-Agent: Mozilla/5.0",
             "-O", in_mp4, video_url
         ], check=True)
 
-        # 2) Pick, wrap, and sanitize a random caption
         with open(caps_file, encoding="utf-8") as f:
             lines = [l.strip() for l in f if l.strip()]
         wrapped_caption = sanitize_caption(wrap_caption(random.choice(lines)))
 
-        # 3) Randomize watermark/LUT parameters
         ob       = round(random.uniform(0.6, 0.7), 2)
         os_      = round(random.uniform(0.85, 0.95), 2)
         ot       = round(random.uniform(0.4, 0.6), 2)
@@ -103,7 +97,6 @@ def process_video(brand):
         delay_y  = round(random.uniform(0.2, 1.0), 2)
         lut_chain = f"lut3d='{lut_file}'," if lut_file else ""
 
-        # 4) Build combined filter_complex
         fc = (
             "[1:v]split=3[wb][ws][wt];"
             f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,"
@@ -133,7 +126,6 @@ def process_video(brand):
             "[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
         )
 
-        # 5) First-pass encode
         cmd1 = [
             "ffmpeg", "-y",
             "-i", in_mp4,
@@ -154,7 +146,6 @@ def process_video(brand):
         ]
         subprocess.run(cmd1, check=True)
 
-        # 6) Strip metadata/chapters, remux
         cmd2 = [
             "ffmpeg", "-y",
             "-i", mid_mp4,
