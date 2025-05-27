@@ -1,3 +1,5 @@
+> ⚠️ This project is proprietary and not open source. All rights reserved. Do not reuse, republish, or fork without permission.
+
 # 🚀 Faceless Video Branding Automation
 
 A Flask-based backend system for transforming short-form videos into brand-consistent, repost-resistant, platform-ready content — fully automated and optimized for TikTok, Instagram Reels, and Facebook.
