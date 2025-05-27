@@ -31,7 +31,7 @@ BRANDS = {
     },
     "polishedform": {
         "metadata": "brand=polishedform",
-        "lut": None,
+        "lut": "Cobi_3.CUBE",
         "watermarks": [
             "polished_watermark.png",
             "polished_watermark_2.png",
@@ -41,7 +41,7 @@ BRANDS = {
     },
     "asian_travel": {
         "metadata": "brand=asian_travel",
-        "lut": None,
+        "lut": "Cobi_3.CUBE",
         "watermarks": [
             "asian_travel_watermark.png",
             "asian_travel_watermark_2.png",
