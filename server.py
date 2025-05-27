@@ -115,7 +115,7 @@ def process_video(brand):
             f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,colorchannelmixer=aa={ob}[bounce];"
             f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,colorchannelmixer=aa={os_}[static];"
             f"[wt]scale=iw*{st}:ih*{st},format=rgba,colorchannelmixer=aa={ot}[top];"
-            "[0:v]hflip,setpts=PTS+0.001/TB,"
+            "[0:v]"
             "scale=iw*0.98:ih*0.98,"
             "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
             f"{lut_chain}"
