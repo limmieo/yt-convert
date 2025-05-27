@@ -18,7 +18,7 @@ BRANDS = {
             "Thick_asian_watermark_3.png"
         ],
         "captions_file": "thick_asian_captions.txt",
-        "outro": "thick_asain_outro.MOV"
+        "outro_file": "thick_asain_outro.MOV"
     },
     "gym_baddie": {
         "metadata": "brand=gym_baddie",
@@ -29,7 +29,7 @@ BRANDS = {
             "gym_baddie_watermark_3.png"
         ],
         "captions_file": "gym_baddie_captions.txt",
-        "outro": "gym_baddie_ig.mov"
+        "outro_file": "gym_baddie_ig.mov"
     },
     "polishedform": {
         "metadata": "brand=polishedform",
@@ -40,7 +40,7 @@ BRANDS = {
             "polished_watermark_3.png"
         ],
         "captions_file": "polishedform_captions.txt",
-        "outro": None
+        "outro_file": None
     },
     "asian_travel": {
         "metadata": "brand=asian_travel",
@@ -51,7 +51,7 @@ BRANDS = {
             "asian_travel_watermark_3.png"
         ],
         "captions_file": "asian_travel_captions.txt",
-        "outro": "asia_travel_vault outro.MOV"
+        "outro_file": "asia_travel_vault outro.MOV"
     }
 }
 
@@ -77,19 +77,21 @@ def process_video(brand):
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
 
-    in_mp4 = f"/tmp/{uuid.uuid4()}.mp4"
-    mid_mp4 = f"/tmp/{uuid.uuid4()}_mid.mp4"
-    out_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
-    outro_ts = None
+    # Temp files
+    in_mp4   = f"/tmp/{uuid.uuid4()}.mp4"
+    mid_mp4  = f"/tmp/{uuid.uuid4()}_mid.mp4"
+    outro_mp4 = f"/tmp/{uuid.uuid4()}_outro.mp4"
+    concat_list = f"/tmp/{uuid.uuid4()}_list.txt"
+    final_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
 
     try:
-        cfg = BRANDS[brand]
-        metadata = cfg["metadata"]
-        assets = os.path.join(os.getcwd(), "assets")
-        wm_file = os.path.join(assets, random.choice(cfg["watermarks"]))
-        lut_file = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
+        cfg       = BRANDS[brand]
+        metadata  = cfg["metadata"]
+        assets    = os.path.join(os.getcwd(), "assets")
+        wm_file   = os.path.join(assets, random.choice(cfg["watermarks"]))
+        lut_file  = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
         caps_file = os.path.join(assets, cfg["captions_file"])
-        outro_file = os.path.join(assets, cfg["outro"]) if cfg["outro"] else None
+        outro_src = os.path.join(assets, cfg["outro_file"]) if cfg["outro_file"] else None
 
         print("▶ Downloading source video...")
         subprocess.run([
@@ -103,6 +105,7 @@ def process_video(brand):
         wrapped_caption = sanitize_caption(wrap_caption(raw_caption))
         print(f"📝 Using caption: {wrapped_caption}")
 
+        # Visual effect parameters
         ob = round(random.uniform(0.6, 0.7), 2)
         os_ = round(random.uniform(0.85, 0.95), 2)
         ot = round(random.uniform(0.4, 0.6), 2)
@@ -116,12 +119,13 @@ def process_video(brand):
         delay_y = round(random.uniform(0.2, 1.0), 2)
         lut_chain = f"lut3d='{lut_file}'," if lut_file else ""
 
+        # FFmpeg filter chain
         fc = (
             "[1:v]split=3[wb][ws][wt];"
             f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,colorchannelmixer=aa={ob}[bounce];"
             f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,colorchannelmixer=aa={os_}[static];"
             f"[wt]scale=iw*{st}:ih*{st},format=rgba,colorchannelmixer=aa={ot}[top];"
-            "[0:v]"
+            "[0:v]setpts=PTS+0.001/TB,"  # Removed hflip
             "scale=iw*0.98:ih*0.98,"
             "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
             f"{lut_chain}"
@@ -140,55 +144,48 @@ def process_video(brand):
             "alpha='if(lt(t,3),1,1-(t-3))'[final]"
         )
 
-        print("🎬 Running first-pass encode...")
+        print("🎬 Encoding processed video...")
         subprocess.run([
             "ffmpeg", "-y", "-i", in_mp4, "-i", wm_file,
             "-filter_complex", fc,
             "-map", "[final]", "-map", "0:a?",
             "-r", str(fr),
-            "-g", "48", "-keyint_min", "24", "-sc_threshold", "0",
             "-b:v", "8M", "-maxrate", "8M", "-bufsize", "16M",
             "-preset", "ultrafast",
-            "-threads", "0",
             "-t", "40",
-            "-c:v", "libx264", "-c:a", "copy",
+            "-c:v", "libx264", "-c:a", "aac",
             "-metadata", metadata,
             mid_mp4
         ], check=True)
 
-        # ─── Add Outro If Available ─────────────────────────────────────────
-        if outro_file:
-            outro_ts = f"/tmp/{uuid.uuid4()}_outro.ts"
-            input_list = f"/tmp/{uuid.uuid4()}_list.txt"
-
+        # Add outro (if applicable)
+        if outro_src:
+            print("🎞️ Re-encoding outro...")
             subprocess.run([
-                "ffmpeg", "-y", "-i", outro_file, "-c", "copy", "-bsf:v", "h264_mp4toannexb", "-f", "mpegts", outro_ts
+                "ffmpeg", "-y", "-i", outro_src,
+                "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                "-r", str(fr),
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                "-c:a", "aac", "-b:a", "128k",
+                outro_mp4
             ], check=True)
 
-            with open(input_list, "w") as f:
+            print("📜 Writing concat list...")
+            with open(concat_list, "w") as f:
                 f.write(f"file '{mid_mp4}'\n")
-                f.write(f"file '{outro_ts}'\n")
+                f.write(f"file '{outro_mp4}'\n")
 
+            print("📦 Concatenating with outro...")
             subprocess.run([
-                "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", input_list,
-                "-c", "copy", "-movflags", "+faststart",
-                out_mp4
+                "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list,
+                "-c", "copy", "-metadata", metadata, final_mp4
             ], check=True)
-
         else:
-            subprocess.run([
-                "ffmpeg", "-y", "-i", mid_mp4,
-                "-map_metadata", "-1", "-map_chapters", "-1",
-                "-c:v", "copy", "-c:a", "copy",
-                "-metadata", metadata,
-                out_mp4
-            ], check=True)
+            print("🚫 No outro found — skipping concat.")
+            final_mp4 = mid_mp4
 
-        if not os.path.exists(out_mp4):
-            raise FileNotFoundError(f"Expected output file not found: {out_mp4}")
-
-        print(f"✅ Returning file: {out_mp4}")
-        return send_file(out_mp4, as_attachment=True)
+        print(f"✅ Returning file: {final_mp4}")
+        return send_file(final_mp4, as_attachment=True)
 
     except subprocess.CalledProcessError as e:
         print(f"❌ FFmpeg failed: {e}")
@@ -197,10 +194,9 @@ def process_video(brand):
         print(f"❌ Unexpected error: {e}")
         return {"error": f"Unexpected error: {e}"}, 500
     finally:
-        for path in (in_mp4, mid_mp4, out_mp4, outro_ts):
-            if path and os.path.exists(path):
-                try: os.remove(path)
-                except: pass
+        for path in (in_mp4, mid_mp4, outro_mp4, concat_list):
+            try: os.remove(path)
+            except: pass
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
