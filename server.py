@@ -3,97 +3,113 @@ import subprocess
 import uuid
 import os
 import random
+import shutil
 
 app = Flask(__name__)
 
-# ─── Brand Configurations ──────────────────────────────────────────────────────
+# ─── Brand Configuration ───────────────────────────────────────────────────────
 BRANDS = {
     "thick_asian": {
-        "metadata": "brand=thick_asian",
         "lut": "Cobi_3.CUBE",
-        "watermarks": ["Thick_asian_watermark.png"],
+        "watermarks": [
+            "Thick_asian_watermark.png",
+            "Thick_asian_watermark_2.png",
+            "Thick_asian_watermark_3.png"
+        ],
         "captions_file": "thick_asian_captions.txt",
-        "outro": "thick_asian_outro.MOV"
+        "outro": "outro_thick_asian.mp4"
     },
-    "asian_travel": {
-        "metadata": "brand=asian_travel",
+    "gym_baddie": {
         "lut": "Cobi_3.CUBE",
-        "watermarks": ["asian_travel_watermark.png"],
-        "captions_file": "asian_travel_captions.txt",
-        "outro": "asian_travel_outro.MOV"
+        "watermarks": [
+            "gym_baddie_watermark.png",
+            "gym_baddie_watermark_2.png",
+            "gym_baddie_watermark_3.png"
+        ],
+        "captions_file": "gym_baddie_captions.txt",
+        "outro": "outro_gym_baddie.mp4"
+    },
+    "polishedform": {
+        "lut": "minimal_lut.CUBE",
+        "watermarks": [
+            "polishedform_wm1.png",
+            "polishedform_wm2.png"
+        ],
+        "captions_file": "polishedform_captions.txt",
+        "outro": "outro_polishedform.mp4"
     }
 }
 
-@app.route("/process/<brand>", methods=["POST"])
-def process(brand):
+# ─── Endpoint ───────────────────────────────────────────────────────────────────
+@app.route('/process/<brand>', methods=['POST'])
+def process_video(brand):
     if brand not in BRANDS:
-        return "Invalid brand", 400
+        return jsonify({"error": "Invalid brand"}), 400
 
-    brand_conf = BRANDS[brand]
+    if 'video' not in request.files:
+        return jsonify({"error": "Missing video file"}), 400
 
-    input_file = request.files["video"]
+    video = request.files['video']
     input_path = f"/tmp/{uuid.uuid4()}.mp4"
-    input_file.save(input_path)
+    video.save(input_path)
 
-    wm_file = random.choice(brand_conf["watermarks"])
-    wm_path = f"/opt/render/project/src/assets/{wm_file}"
-    caption = "Yes. Just yes."
+    config = BRANDS[brand]
+    caption = random_caption(config['captions_file'])
+    watermark_path = random.choice(config['watermarks'])
+    lut_path = config['lut']
+    outro_path = config['outro']
 
-    caption_cmd = f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='{caption}':fontcolor=white:fontsize=28:box=1:boxcolor=black@0.6:boxborderw=10:x=(w-text_w)/2:y=h*0.45:enable='between(t,0,4)':alpha='if(lt(t,3),1,1-(t-3))'"
+    mid_mp4 = f"/tmp/{uuid.uuid4()}_mid.mp4"
+    outro_mp4 = f"/tmp/{uuid.uuid4()}_outro.mp4"
+    concat_list = f"/tmp/{uuid.uuid4()}_list.txt"
+    final_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
 
-    mid_output = f"/tmp/{uuid.uuid4()}_mid.mp4"
-    final_output = f"/tmp/{uuid.uuid4()}_final.mp4"
-
+    # Step 1: Process original video
     ffmpeg_cmd = [
-        "ffmpeg", "-y",
+        "ffmpeg",
         "-i", input_path,
-        "-i", wm_path,
-        "-filter_complex",
-        f"[1:v]scale=iw*0.9:ih*0.9[wm];[0:v]scale=iw:ih[vid];[vid][wm]overlay=W-w-10:H-h-10, {caption_cmd}",
-        "-map", "[out]",
-        "-map", "0:a?",
-        "-c:v", "libx264",
+        "-i", watermark_path,
+        "-vf",
+        f"format=yuv420p,lut3d='{lut_path}',"
+        f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
+        f"text='{caption}':x=(w-text_w)/2:y=30:fontsize=32:fontcolor=white:"
+        f"box=1:boxcolor=black@0.5:boxborderw=10,"
+        f"overlay=W-w-random(1)*50:H-h-random(1)*50",
         "-preset", "ultrafast",
-        "-crf", "23",
-        "-c:a", "aac",
-        "-b:v", "8M",
-        "-maxrate", "8M",
-        "-bufsize", "16M",
-        "-metadata", brand_conf["metadata"],
-        mid_output
+        "-crf", "18",
+        "-movflags", "+faststart",
+        mid_mp4
     ]
-
-    ffmpeg_cmd[16] = f"[vid][wm]overlay=W-w-10:H-h-10[out];{caption_cmd}"  # Fix filter chain naming
     subprocess.run(ffmpeg_cmd, check=True)
 
-    # Try to add outro
-    outro_path = f"/opt/render/project/src/assets/{brand_conf.get('outro', '')}"
-    concat_txt_path = f"/tmp/{uuid.uuid4()}.txt"
+    # Step 2: Re-encode outro to match input
+    ffmpeg_outro_cmd = [
+        "ffmpeg", "-i", outro_path,
+        "-c:v", "libx264", "-crf", "18", "-preset", "ultrafast",
+        "-c:a", "aac", "-movflags", "+faststart",
+        outro_mp4
+    ]
+    subprocess.run(ffmpeg_outro_cmd, check=True)
 
-    if os.path.exists(outro_path):
-        fixed_mid = f"/tmp/{uuid.uuid4()}_reencoded.mp4"
+    # Step 3: Concat processed + outro
+    with open(concat_list, "w") as f:
+        f.write(f"file '{mid_mp4}'\n")
+        f.write(f"file '{outro_mp4}'\n")
 
-        # Re-encode for concat
-        subprocess.run([
-            "ffmpeg", "-y", "-i", mid_output,
-            "-c", "copy", "-movflags", "+faststart", fixed_mid
-        ], check=True)
+    ffmpeg_concat_cmd = [
+        "ffmpeg", "-f", "concat", "-safe", "0", "-i", concat_list,
+        "-c", "copy", final_mp4
+    ]
+    subprocess.run(ffmpeg_concat_cmd, check=True)
 
-        # Write concat file
-        with open(concat_txt_path, "w") as f:
-            f.write(f"file '{fixed_mid}'\nfile '{outro_path}'\n")
+    return send_file(final_mp4, mimetype='video/mp4')
 
-        subprocess.run([
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_txt_path,
-            "-c", "copy", final_output
-        ], check=True)
+# ─── Caption Utility ───────────────────────────────────────────────────────────
+def random_caption(file_path):
+    with open(file_path, "r", encoding="utf-8") as f:
+        captions = [line.strip() for line in f if line.strip()]
+    return random.choice(captions)
 
-        os.remove(fixed_mid)
-        os.remove(concat_txt_path)
-        return send_file(final_output, mimetype="video/mp4")
-
-    # If outro missing, return mid video
-    return send_file(mid_output, mimetype="video/mp4")
-
-if __name__ == "__main__":
-    app.run(debug=True)
+# ─── Run ────────────────────────────────────────────────────────────────────────
+if __name__ == '__main__':
+    app.run(debug=False, host='0.0.0.0', port=5000)
