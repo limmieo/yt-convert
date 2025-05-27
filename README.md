@@ -1,145 +1,148 @@
-# 🚀 FACELESS VIDEO BRANDING AUTOMATION
+# 🚀 Faceless Video Branding Automation
 
-**A Flask-based backend to automatically turn short-form reposts into unique, brand-consistent, repost-resistant content.**  
-Perfect for IG Reels, TikTok, and Facebook automation at scale.
-
----
-
-# ✅ WHAT THIS SYSTEM DOES
-
-- 🔽 **Downloads videos** using `wget`
-- 🎞️ **Applies FFmpeg processing** with:
-  - Crop, pad, flip, LUTs, saturation tweaks
-  - Top caption overlay (bounce-in + fade-out)
-  - Multi-line support via `\n`
-  - Up to **3 watermark layers** (bouncing, blurred, scrolling)
-- 🎯 **Randomized watermark behavior** (position, opacity, order)
-- 💬 **Caption pulled from rotating .txt** file
-- 🧠 **Repost detection obfuscation** (looks edited in-app)
-- 🔄 **Brand modularity** via `BRANDS` dict
-- 🧩 **Integrates with full automation stacks**:
-  - Google Sheets
-  - Make.com
-  - Dropbox / Google Drive
-  - ChatGPT (captions/comments)
-  - Instagram/Facebook posting
+A Flask-based backend system for transforming short-form videos into brand-consistent, repost-resistant, platform-ready content — fully automated and optimized for TikTok, Instagram Reels, and Facebook.
 
 ---
 
-# ✨ FEATURES
+## ✅ What This System Does
 
-## 🔁 BRAND PROFILES
-Each brand gets its own:
-- `.txt` caption bank
-- Watermark pool (static/animated/blurred)
-- LUT (`.CUBE` optional color grading)
-- Scroll speed config
-- Metadata label for tracking
-
-## 🎬 VIDEO EDITING BREAKDOWN
-- Top caption from `.txt`
-- Caption + bar fades after 4–6s
-- Bounce-in animation at start
-- 1 animated watermark (random position + bounce)
-- 1 blurred static watermark
-- 1 optional top-scroll watermark
-- Flip / crop / LUT applied per video
-
-## 🔗 AUTOMATION SYSTEM SUPPORT
-- Paste video links in **Google Sheets**
-- Trigger workflow using **Make.com**
-- Generate captions with **ChatGPT**
-- Save files to **Dropbox/Drive**
-- Auto-post via **Meta’s API**
-- Update row status from `Pending` to `Posted`
+- 🔽 **Downloads source videos** via `wget`
+- 🧠 **Obfuscates reposts** using FFmpeg tricks (crop, padding, scaling)
+- 🎨 **Applies branded overlays** with up to 3 watermarks
+- 📝 **Overlays smart captions** from `.txt` files with fade + bounce
+- 📽️ **Appends branded outro clips** (for select brands)
+- 🔄 **Randomizes watermark opacity, size, and animation path**
+- 🧩 **Supports multi-brand workflows** from a single backend
+- 🔗 **Integrates with Make.com, Google Sheets, Dropbox, and Meta API**
 
 ---
 
-# 📁 PROJECT STRUCTURE
+## ✨ Features by Design
 
-```
-project/
-├── app.py                      # Flask server
-├── assets/
-│   ├── captions_brand1.txt     # Rotating captions
-│   ├── watermark1.png          # Static/animated overlays
-│   ├── LUT_file.CUBE           # Optional LUT
-│   └── ...
-```
+### 🔁 Brand Profiles
+Each brand can define:
+- Rotating captions file
+- Multiple watermark images (static or animated)
+- Optional LUT (.CUBE) for color grading
+- Optional outro video
+- Metadata tag
+
+### 🎬 Editing Pipeline
+- Caption pulled from `.txt` and shown top-center
+- Bounce-in with fade-out animation
+- Optional LUT and crop for repost variation
+- Watermark 1: bouncing random position
+- Watermark 2: static bottom-center
+- Watermark 3: optional scroll overlay
+- Final outro automatically added for brands that support it
+- Horizontal flip disabled to preserve text readability
 
 ---
 
-# 🔧 BRAND CONFIG EXAMPLE
+## 🔧 Brand Config Format
 
 ```python
 "example_brand": {
     "metadata": "brand=example_brand",
-    "lut": "LUT_file.CUBE",
-    "scroll_speed": 100,
+    "lut": "example_lut.CUBE",
     "watermarks": [
         "wm1.png",
         "wm2.png",
         "wm3.png"
     ],
-    "captions_file": "example_brand_captions.txt"
+    "captions_file": "example_brand_captions.txt",
+    "outro": "example_brand_outro.mp4"
 }
 ```
 
 ---
 
-# 🛠️ HOW TO USE
+## 📁 Project Structure
 
-## 1️⃣ START SERVER
+```
+project/
+├── app.py                      # Main Flask server
+├── assets/
+│   ├── example_brand_outro.mp4 # Outro clip
+│   ├── example_lut.CUBE        # LUT file (optional)
+│   ├── captions_brand.txt      # Caption bank
+│   ├── watermark1.png          # Watermarks (1–3 per brand)
+│   └── ...
+```
+
+---
+
+## 🛠 How to Use
+
+### 1️⃣ Start the server
 ```bash
 python app.py
 ```
 
-## 2️⃣ POST A REQUEST
+### 2️⃣ Send a request
 ```
 POST http://localhost:5000/process/<brand>
 ```
 
-**JSON Body Example:**
+**Example payload:**
 ```json
 {
   "video_url": "https://example.com/video.mp4"
 }
 ```
 
-## 3️⃣ OUTPUT
-You’ll get a `.mp4` file with overlays, captions, and filters — ready to upload.
+### 3️⃣ Output
+Returns a fully edited `.mp4` video with caption, watermarks, and outro – ready to post.
 
 ---
 
-# ⚙️ SYSTEM REQUIREMENTS
+## 🔁 Automation Workflow Example
+
+1. ✅ Link added to Google Sheet
+2. 🔁 Make.com triggers `/process/<brand>`
+3. 🎞️ Video downloaded and edited via Flask + FFmpeg
+4. 💬 Caption/comment generated by ChatGPT
+5. 📤 Uploads via Meta API, Google Drive, or Dropbox
+6. ✅ Google Sheet status updates automatically
+
+---
+
+## ⚙️ System Requirements
 
 - Python 3.8+
+- Flask
 - FFmpeg (installed + in PATH)
-- `wget`
-- `flask`
+- `wget` (for video download)
 
 ---
 
-# 🔁 FULL AUTOMATION FLOW (EXAMPLE)
+## 💼 Use Cases & Value for Employers
 
-1. 🧾 **New video link added to Google Sheet**
-2. 🔁 **Make.com triggers Flask endpoint**
-3. 💾 **Processed video saved to Dropbox**
-4. 💬 **ChatGPT creates caption/comment**
-5. 📲 **Video uploaded to IG/FB via API**
-6. ✅ **Status updated in Google Sheet**
+This system powers multiple live, monetized social media brands. It showcases:
+
+### 🧠 Technical Strengths
+- Backend API design (Flask, Python)
+- FFmpeg mastery (filters, remuxing, animation)
+- Modular brand configuration
+- Automated media processing and posting
+- Custom captioning + watermark logic
+
+### 📈 Business Impact
+- Cuts editing time to near-zero
+- Enables high-volume content pipelines
+- Makes reposts feel native and unique
+- Supports multiple monetized pages
+- Decreases repost bans and increases viewer retention
+
+### 🧩 Who This Impresses
+- Social media agencies
+- Creator economy startups
+- Growth teams and marketing ops
+- Content aggregators
+- Automation & tooling teams
+
+> This is real, working, production-grade software — built for scaling faceless content across platforms with zero manual labor.
 
 ---
 
-# 💡 TIPS & NOTES
-
-- Each brand has its own `captions.txt`
-- Supports emoji, line breaks, custom tones
-- Caption fade/bounce customizable in FFmpeg
-- Optional LUTs help build aesthetic identity
-- Deployable to Render, RunPod, or self-hosted
-
----
-
-> **This system is built for content re-creators, automation hustlers, and social media machines.**  
-> Never edit a video manually again.
+**Built by creators, for creators. Stop editing. Start scaling.**
