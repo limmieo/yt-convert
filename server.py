@@ -1,15 +1,16 @@
-from flask import Flask, request, send_file, jsonify
+from flask import Flask, request, send_file
 import subprocess
 import uuid
 import os
 import random
-import shutil
+import textwrap
 
 app = Flask(__name__)
 
-# ─── Brand Configuration ───────────────────────────────────────────────────────
+# ─── Brand Config ─────────────────────────────────────────────────────────
 BRANDS = {
     "thick_asian": {
+        "metadata": "brand=thick_asian",
         "lut": "Cobi_3.CUBE",
         "watermarks": [
             "Thick_asian_watermark.png",
@@ -17,9 +18,10 @@ BRANDS = {
             "Thick_asian_watermark_3.png"
         ],
         "captions_file": "thick_asian_captions.txt",
-        "outro": "outro_thick_asian.mp4"
+        "outro_file": "thick_asain_outro.MOV"
     },
     "gym_baddie": {
+        "metadata": "brand=gym_baddie",
         "lut": "Cobi_3.CUBE",
         "watermarks": [
             "gym_baddie_watermark.png",
@@ -27,89 +29,174 @@ BRANDS = {
             "gym_baddie_watermark_3.png"
         ],
         "captions_file": "gym_baddie_captions.txt",
-        "outro": "outro_gym_baddie.mp4"
+        "outro_file": "gym_baddie_ig.mov"
     },
     "polishedform": {
-        "lut": "minimal_lut.CUBE",
+        "metadata": "brand=polishedform",
+        "lut": None,
         "watermarks": [
-            "polishedform_wm1.png",
-            "polishedform_wm2.png"
+            "polished_watermark.png",
+            "polished_watermark_2.png",
+            "polished_watermark_3.png"
         ],
         "captions_file": "polishedform_captions.txt",
-        "outro": "outro_polishedform.mp4"
+        "outro_file": None
+    },
+    "asian_travel": {
+        "metadata": "brand=asian_travel",
+        "lut": "Cobi_3.CUBE",
+        "watermarks": [
+            "asian_travel_watermark.png",
+            "asian_travel_watermark_2.png",
+            "asian_travel_watermark_3.png"
+        ],
+        "captions_file": "asian_travel_captions.txt",
+        "outro_file": "asia_travel_vault outro.MOV"
     }
 }
 
-# ─── Endpoint ───────────────────────────────────────────────────────────────────
+def wrap_caption(caption, width=30):
+    lines = textwrap.wrap(caption, width)
+    if len(lines) > 2:
+        lines = [" ".join(lines[:-1]), lines[-1]]
+    return "\\n".join(lines)
+
+def sanitize_caption(caption):
+    caption = caption.replace('\\', '\\\\')
+    caption = caption.replace("'", "\\'")
+    caption = caption.replace(":", "\\:")
+    caption = caption.replace('\n', '')
+    return caption
+
 @app.route('/process/<brand>', methods=['POST'])
 def process_video(brand):
     if brand not in BRANDS:
-        return jsonify({"error": "Invalid brand"}), 400
+        return {"error": f"Unsupported brand '{brand}'."}, 400
 
-    if 'video' not in request.files:
-        return jsonify({"error": "Missing video file"}), 400
+    video_url = request.json.get('video_url')
+    if not video_url:
+        return {"error": "Missing video_url in request."}, 400
 
-    video = request.files['video']
-    input_path = f"/tmp/{uuid.uuid4()}.mp4"
-    video.save(input_path)
+    # Temp files
+    in_mp4     = f"/tmp/{uuid.uuid4()}.mp4"
+    mid_mp4    = f"/tmp/{uuid.uuid4()}_mid.mp4"
+    outro_raw  = f"/tmp/{uuid.uuid4()}_outro_raw.mp4"
+    outro_mp4  = f"/tmp/{uuid.uuid4()}_outro.mp4"
+    concat_txt = f"/tmp/{uuid.uuid4()}_list.txt"
+    final_mp4  = f"/tmp/{uuid.uuid4()}_final.mp4"
 
-    config = BRANDS[brand]
-    caption = random_caption(config['captions_file'])
-    watermark_path = random.choice(config['watermarks'])
-    lut_path = config['lut']
-    outro_path = config['outro']
+    try:
+        cfg       = BRANDS[brand]
+        metadata  = cfg["metadata"]
+        assets    = os.path.join(os.getcwd(), "assets")
+        wm_file   = os.path.join(assets, random.choice(cfg["watermarks"]))
+        lut_file  = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
+        caps_file = os.path.join(assets, cfg["captions_file"])
+        outro_src = os.path.join(assets, cfg["outro_file"]) if cfg["outro_file"] else None
 
-    mid_mp4 = f"/tmp/{uuid.uuid4()}_mid.mp4"
-    outro_mp4 = f"/tmp/{uuid.uuid4()}_outro.mp4"
-    concat_list = f"/tmp/{uuid.uuid4()}_list.txt"
-    final_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
+        print("▶ Downloading source video...")
+        subprocess.run([
+            "wget", "-q", "--header=User-Agent: Mozilla/5.0",
+            "-O", in_mp4, video_url
+        ], check=True)
 
-    # Step 1: Process original video
-    ffmpeg_cmd = [
-        "ffmpeg",
-        "-i", input_path,
-        "-i", watermark_path,
-        "-vf",
-        f"format=yuv420p,lut3d='{lut_path}',"
-        f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
-        f"text='{caption}':x=(w-text_w)/2:y=30:fontsize=32:fontcolor=white:"
-        f"box=1:boxcolor=black@0.5:boxborderw=10,"
-        f"overlay=W-w-random(1)*50:H-h-random(1)*50",
-        "-preset", "ultrafast",
-        "-crf", "18",
-        "-movflags", "+faststart",
-        mid_mp4
-    ]
-    subprocess.run(ffmpeg_cmd, check=True)
+        with open(caps_file, encoding="utf-8") as f:
+            lines = [l.strip() for l in f if l.strip()]
+        raw_caption = random.choice(lines)
+        wrapped_caption = sanitize_caption(wrap_caption(raw_caption))
+        print(f"📝 Using caption: {wrapped_caption}")
 
-    # Step 2: Re-encode outro to match input
-    ffmpeg_outro_cmd = [
-        "ffmpeg", "-i", outro_path,
-        "-c:v", "libx264", "-crf", "18", "-preset", "ultrafast",
-        "-c:a", "aac", "-movflags", "+faststart",
-        outro_mp4
-    ]
-    subprocess.run(ffmpeg_outro_cmd, check=True)
+        ob = round(random.uniform(0.6, 0.7), 2)
+        os_ = round(random.uniform(0.85, 0.95), 2)
+        ot = round(random.uniform(0.4, 0.6), 2)
+        sb = random.uniform(0.85, 1.0)
+        ss = random.uniform(1.1, 1.25)
+        st = random.uniform(0.9, 1.1)
+        fr = round(random.uniform(29.9, 30.1), 3)
+        dx = round(random.uniform(20, 40), 2)
+        dy = round(random.uniform(20, 40), 2)
+        delay_x = round(random.uniform(0.2, 1.0), 2)
+        delay_y = round(random.uniform(0.2, 1.0), 2)
+        lut_chain = f"lut3d='{lut_file}'," if lut_file else ""
 
-    # Step 3: Concat processed + outro
-    with open(concat_list, "w") as f:
-        f.write(f"file '{mid_mp4}'\n")
-        f.write(f"file '{outro_mp4}'\n")
+        fc = (
+            "[1:v]split=3[wb][ws][wt];"
+            f"[wb]scale=iw*{sb}:ih*{sb},format=rgba,colorchannelmixer=aa={ob}[bounce];"
+            f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,colorchannelmixer=aa={os_}[static];"
+            f"[wt]scale=iw*{st}:ih*{st},format=rgba,colorchannelmixer=aa={ot}[top];"
+            "[0:v]setpts=PTS+0.001/TB,"
+            "scale=iw*0.98:ih*0.98,"
+            "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
+            f"{lut_chain}"
+            "pad=iw+150:ih+150:75:75:color=black[padded];"
+            "[padded][bounce]overlay="
+            f"x='abs(mod((t+{delay_x})*{dx},(main_w-w)*2)-(main_w-w))':"
+            f"y='abs(mod((t+{delay_y})*{dy},(main_h-h)*2)-(main_h-h))'[b1];"
+            "[b1][static]overlay=x=(main_w-w)/2:y=main_h-h-20[b2];"
+            "[b2][top]overlay=x='mod(t*100,main_w+w)-w':y=20[step3];"
+            "[step3]drawtext="
+            "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
+            f"text='{wrapped_caption}':"
+            "fontcolor=white:fontsize=28:box=1:boxcolor=black@0.6:boxborderw=10:"
+            "x=(w-text_w)/2:y=h*0.45:"
+            "enable='between(t,0,4)':"
+            "alpha='if(lt(t,3),1,1-(t-3))'[final]"
+        )
 
-    ffmpeg_concat_cmd = [
-        "ffmpeg", "-f", "concat", "-safe", "0", "-i", concat_list,
-        "-c", "copy", final_mp4
-    ]
-    subprocess.run(ffmpeg_concat_cmd, check=True)
+        print("🎬 Encoding processed video...")
+        subprocess.run([
+            "ffmpeg", "-y", "-i", in_mp4, "-i", wm_file,
+            "-filter_complex", fc,
+            "-map", "[final]", "-map", "0:a?",
+            "-r", str(fr),
+            "-b:v", "8M", "-maxrate", "8M", "-bufsize", "16M",
+            "-preset", "ultrafast",
+            "-t", "40",
+            "-c:v", "libx264", "-c:a", "aac",
+            "-metadata", metadata,
+            mid_mp4
+        ], check=True)
 
-    return send_file(final_mp4, mimetype='video/mp4')
+        if outro_src:
+            print("🎞️ Re-encoding outro...")
+            subprocess.run([
+                "ffmpeg", "-y", "-i", outro_src,
+                "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                "-r", str(fr),
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                "-c:a", "aac", "-b:a", "128k",
+                outro_mp4
+            ], check=True)
 
-# ─── Caption Utility ───────────────────────────────────────────────────────────
-def random_caption(file_path):
-    with open(file_path, "r", encoding="utf-8") as f:
-        captions = [line.strip() for line in f if line.strip()]
-    return random.choice(captions)
+            print("📜 Writing concat list...")
+            with open(concat_txt, "w") as f:
+                f.write(f"file '{mid_mp4}'\n")
+                f.write(f"file '{outro_mp4}'\n")
 
-# ─── Run ────────────────────────────────────────────────────────────────────────
-if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=5000)
+            print("📦 Concatenating with outro...")
+            subprocess.run([
+                "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_txt,
+                "-c", "copy", "-metadata", metadata, final_mp4
+            ], check=True)
+        else:
+            print("🚫 No outro found — skipping concat.")
+            final_mp4 = mid_mp4
+
+        print(f"✅ Returning file: {final_mp4}")
+        return send_file(final_mp4, as_attachment=True)
+
+    except subprocess.CalledProcessError as e:
+        print(f"❌ FFmpeg failed: {e}")
+        return {"error": f"FFmpeg failed: {e}"}, 500
+    except Exception as e:
+        print(f"❌ Unexpected error: {e}")
+        return {"error": f"Unexpected error: {e}"}, 500
+    finally:
+        for path in [in_mp4, mid_mp4, outro_raw, outro_mp4, concat_txt]:
+            try:
+                os.remove(path)
+            except:
+                pass
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
