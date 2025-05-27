@@ -44,7 +44,7 @@ BRANDS = {
     },
     "asian_travel": {
         "metadata": "brand=asian_travel",
-        "lut": "Cobi_3.CUBE",
+        "lut": None,
         "watermarks": [
             "asian_travel_watermark.png",
             "asian_travel_watermark_2.png",
@@ -77,13 +77,11 @@ def process_video(brand):
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
 
-    # Temp files
-    in_mp4     = f"/tmp/{uuid.uuid4()}.mp4"
-    mid_mp4    = f"/tmp/{uuid.uuid4()}_mid.mp4"
-    outro_raw  = f"/tmp/{uuid.uuid4()}_outro_raw.mp4"
-    outro_mp4  = f"/tmp/{uuid.uuid4()}_outro.mp4"
-    concat_txt = f"/tmp/{uuid.uuid4()}_list.txt"
-    final_mp4  = f"/tmp/{uuid.uuid4()}_final.mp4"
+    in_mp4   = f"/tmp/{uuid.uuid4()}.mp4"
+    mid_mp4  = f"/tmp/{uuid.uuid4()}_mid.mp4"
+    outro_mp4 = f"/tmp/{uuid.uuid4()}_outro.mp4"
+    concat_list = f"/tmp/{uuid.uuid4()}_list.txt"
+    final_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
 
     try:
         cfg       = BRANDS[brand]
@@ -112,7 +110,7 @@ def process_video(brand):
         sb = random.uniform(0.85, 1.0)
         ss = random.uniform(1.1, 1.25)
         st = random.uniform(0.9, 1.1)
-        fr = round(random.uniform(29.9, 30.1), 3)
+        fr = round(random.uniform(29.87, 30.1), 3)
         dx = round(random.uniform(20, 40), 2)
         dy = round(random.uniform(20, 40), 2)
         delay_x = round(random.uniform(0.2, 1.0), 2)
@@ -140,7 +138,8 @@ def process_video(brand):
             "fontcolor=white:fontsize=28:box=1:boxcolor=black@0.6:boxborderw=10:"
             "x=(w-text_w)/2:y=h*0.45:"
             "enable='between(t,0,4)':"
-            "alpha='if(lt(t,3),1,1-(t-3))'[final]"
+            "alpha='if(lt(t,3),1,1-(t-3))',"
+            "scale=trunc(iw/2)*2:trunc(ih/2)*2[final]"
         )
 
         print("🎬 Encoding processed video...")
@@ -169,13 +168,13 @@ def process_video(brand):
             ], check=True)
 
             print("📜 Writing concat list...")
-            with open(concat_txt, "w") as f:
+            with open(concat_list, "w") as f:
                 f.write(f"file '{mid_mp4}'\n")
                 f.write(f"file '{outro_mp4}'\n")
 
             print("📦 Concatenating with outro...")
             subprocess.run([
-                "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_txt,
+                "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list,
                 "-c", "copy", "-metadata", metadata, final_mp4
             ], check=True)
         else:
@@ -192,11 +191,9 @@ def process_video(brand):
         print(f"❌ Unexpected error: {e}")
         return {"error": f"Unexpected error: {e}"}, 500
     finally:
-        for path in [in_mp4, mid_mp4, outro_raw, outro_mp4, concat_txt]:
-            try:
-                os.remove(path)
-            except:
-                pass
+        for path in (in_mp4, mid_mp4, outro_mp4, concat_list):
+            try: os.remove(path)
+            except: pass
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
