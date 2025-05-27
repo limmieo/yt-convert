@@ -17,7 +17,8 @@ BRANDS = {
             "Thick_asian_watermark_2.png",
             "Thick_asian_watermark_3.png"
         ],
-        "captions_file": "thick_asian_captions.txt"
+        "captions_file": "thick_asian_captions.txt",
+        "outro": "thick_asain_outro.MOV"
     },
     "gym_baddie": {
         "metadata": "brand=gym_baddie",
@@ -27,27 +28,30 @@ BRANDS = {
             "gym_baddie_watermark_2.png",
             "gym_baddie_watermark_3.png"
         ],
-        "captions_file": "gym_baddie_captions.txt"
+        "captions_file": "gym_baddie_captions.txt",
+        "outro": "gym_baddie_ig.mov"
     },
     "polishedform": {
         "metadata": "brand=polishedform",
-        "lut": "Cobi_3.CUBE",
+        "lut": None,
         "watermarks": [
             "polished_watermark.png",
             "polished_watermark_2.png",
             "polished_watermark_3.png"
         ],
-        "captions_file": "polishedform_captions.txt"
+        "captions_file": "polishedform_captions.txt",
+        "outro": None
     },
     "asian_travel": {
         "metadata": "brand=asian_travel",
-        "lut": "Cobi_3.CUBE",
+        "lut": None,
         "watermarks": [
             "asian_travel_watermark.png",
             "asian_travel_watermark_2.png",
             "asian_travel_watermark_3.png"
         ],
-        "captions_file": "asian_travel_captions.txt"
+        "captions_file": "asian_travel_captions.txt",
+        "outro": "asia_travel_vault outro.MOV"
     }
 }
 
@@ -73,17 +77,19 @@ def process_video(brand):
     if not video_url:
         return {"error": "Missing video_url in request."}, 400
 
-    in_mp4  = f"/tmp/{uuid.uuid4()}.mp4"
+    in_mp4 = f"/tmp/{uuid.uuid4()}.mp4"
     mid_mp4 = f"/tmp/{uuid.uuid4()}_mid.mp4"
     out_mp4 = f"/tmp/{uuid.uuid4()}_final.mp4"
+    outro_ts = None
 
     try:
-        cfg       = BRANDS[brand]
-        metadata  = cfg["metadata"]
-        assets    = os.path.join(os.getcwd(), "assets")
-        wm_file   = os.path.join(assets, random.choice(cfg["watermarks"]))
-        lut_file  = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
+        cfg = BRANDS[brand]
+        metadata = cfg["metadata"]
+        assets = os.path.join(os.getcwd(), "assets")
+        wm_file = os.path.join(assets, random.choice(cfg["watermarks"]))
+        lut_file = os.path.join(assets, cfg["lut"]) if cfg["lut"] else None
         caps_file = os.path.join(assets, cfg["captions_file"])
+        outro_file = os.path.join(assets, cfg["outro"]) if cfg["outro"] else None
 
         print("▶ Downloading source video...")
         subprocess.run([
@@ -131,8 +137,7 @@ def process_video(brand):
             "fontcolor=white:fontsize=28:box=1:boxcolor=black@0.6:boxborderw=10:"
             "x=(w-text_w)/2:y=h*0.45:"
             "enable='between(t,0,4)':"
-            "alpha='if(lt(t,3),1,1-(t-3))'[captioned];"
-            "[captioned]scale='trunc(iw/2)*2:trunc(ih/2)*2'[final]"
+            "alpha='if(lt(t,3),1,1-(t-3))'[final]"
         )
 
         print("🎬 Running first-pass encode...")
@@ -151,14 +156,33 @@ def process_video(brand):
             mid_mp4
         ], check=True)
 
-        print("🔁 Running remux...")
-        subprocess.run([
-            "ffmpeg", "-y", "-i", mid_mp4,
-            "-map_metadata", "-1", "-map_chapters", "-1",
-            "-c:v", "copy", "-c:a", "copy",
-            "-metadata", metadata,
-            out_mp4
-        ], check=True)
+        # ─── Add Outro If Available ─────────────────────────────────────────
+        if outro_file:
+            outro_ts = f"/tmp/{uuid.uuid4()}_outro.ts"
+            input_list = f"/tmp/{uuid.uuid4()}_list.txt"
+
+            subprocess.run([
+                "ffmpeg", "-y", "-i", outro_file, "-c", "copy", "-bsf:v", "h264_mp4toannexb", "-f", "mpegts", outro_ts
+            ], check=True)
+
+            with open(input_list, "w") as f:
+                f.write(f"file '{mid_mp4}'\n")
+                f.write(f"file '{outro_ts}'\n")
+
+            subprocess.run([
+                "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", input_list,
+                "-c", "copy", "-movflags", "+faststart",
+                out_mp4
+            ], check=True)
+
+        else:
+            subprocess.run([
+                "ffmpeg", "-y", "-i", mid_mp4,
+                "-map_metadata", "-1", "-map_chapters", "-1",
+                "-c:v", "copy", "-c:a", "copy",
+                "-metadata", metadata,
+                out_mp4
+            ], check=True)
 
         if not os.path.exists(out_mp4):
             raise FileNotFoundError(f"Expected output file not found: {out_mp4}")
@@ -173,9 +197,10 @@ def process_video(brand):
         print(f"❌ Unexpected error: {e}")
         return {"error": f"Unexpected error: {e}"}, 500
     finally:
-        for path in (in_mp4, mid_mp4, out_mp4):
-            try: os.remove(path)
-            except: pass
+        for path in (in_mp4, mid_mp4, out_mp4, outro_ts):
+            if path and os.path.exists(path):
+                try: os.remove(path)
+                except: pass
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
