@@ -123,9 +123,11 @@ def process_video(brand):
             f"[ws]scale=iw*{ss}:ih*{ss},format=rgba,colorchannelmixer=aa={os_}[static];"
             f"[wt]scale=iw*{st}:ih*{st},format=rgba,colorchannelmixer=aa={ot}[top];"
             "[0:v]setpts=PTS+0.001/TB,"
-            "scale=iw*0.98:ih*0.98,"
+            "scale=iw*1.03:ih*1.03,"
             "crop=iw-8:ih-8:(iw-8)/2:(ih-8)/2,"
             f"{lut_chain}"
+            "eq=contrast=1.05,"
+            "noise=alls=10:allf=t,"
             "pad=iw+150:ih+150:75:75:color=black[padded];"
             "[padded][bounce]overlay="
             f"x='abs(mod((t+{delay_x})*{dx},(main_w-w)*2)-(main_w-w))':"
@@ -138,8 +140,7 @@ def process_video(brand):
             "fontcolor=white:fontsize=28:box=1:boxcolor=black@0.6:boxborderw=10:"
             "x=(w-text_w)/2:y=h*0.45:"
             "enable='between(t,0,4)':"
-            "alpha='if(lt(t,3),1,1-(t-3))',"
-            "scale=trunc(iw/2)*2:trunc(ih/2)*2[final]"
+            "alpha='if(lt(t,3),1,1-(t-3))'[final]"
         )
 
         print("🎬 Encoding processed video...")
