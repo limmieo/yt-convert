@@ -6,7 +6,7 @@ import random
 import textwrap
 
 app = Flask(__name__)
-
+#-
 # ─── Brand Config ─────────────────────────────────────────────────────────
 BRANDS = {
     "thick_asian": {
